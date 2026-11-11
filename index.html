@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nueva tasación</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="src/app.js" defer></script>
+</head>
+<body>
+  <main class="container">
+    <header class="page-header">
+      <p class="eyebrow">Tasador · Prototipo</p>
+      <h1>Nueva tasación</h1>
+      <p>Registra los antecedentes iniciales de la propiedad.</p>
+    </header>
+
+    <form id="inspection-form">
+      <section class="card" aria-labelledby="property-heading">
+        <h2 id="property-heading">Datos de la propiedad</h2>
+
+        <div class="form-grid">
+          <label>
+            Estado
+            <select name="status">
+              <option value="pendiente">Pendiente</option>
+              <option value="inspeccion">Inspección</option>
+              <option value="revision">En revisión</option>
+              <option value="entregada">Entregada</option>
+            </select>
+          </label>
+
+          <label>
+            Tipo de propiedad
+            <select name="propertyType" required>
+              <option value="">Selecciona una opción</option>
+              <option value="casa">Casa</option>
+              <option value="departamento">Departamento</option>
+            </select>
+          </label>
+
+          <label>
+            Región
+            <input name="region" type="text" required>
+          </label>
+
+          <label>
+            Comuna
+            <input name="commune" type="text" required>
+          </label>
+
+          <label class="full-width">
+            Dirección o referencia
+            <input name="address" type="text" required>
+          </label>
+
+          <label>
+            Superficie construida (m²)
+            <input name="builtArea" type="number" min="0" step="0.01">
+          </label>
+
+          <label>
+            Superficie de terreno (m²)
+            <input name="landArea" type="number" min="0" step="0.01">
+          </label>
+
+          <label>
+            Dormitorios
+            <input name="bedrooms" type="number" min="0" step="1">
+          </label>
+
+          <label>
+            Baños
+            <input name="bathrooms" type="number" min="0" step="1">
+          </label>
+
+          <label>
+            Estado de conservación
+            <select name="condition">
+              <option value="">Por evaluar</option>
+              <option value="bueno">Bueno</option>
+              <option value="regular">Regular</option>
+              <option value="requiere-reparaciones">Requiere reparaciones</option>
+            </select>
+          </label>
+
+          <label>
+            Materiales principales
+            <input name="materials" type="text">
+          </label>
+
+          <label class="full-width">
+            Distribución
+            <textarea name="distribution" rows="3"></textarea>
+          </label>
+
+          <label class="full-width">
+            Observaciones
+            <textarea name="observations" rows="4"></textarea>
+          </label>
+        </div>
+
+        <button type="submit">Revisar ficha</button>
+        <p id="form-message" class="message" role="status" aria-live="polite"></p>
+      </section>
+    </form>
+  </main>
+</body>
+</html>
