@@ -1,57 +1,619 @@
-const STORAGE_KEY = "tasadorMvp.inspectionDraft.v1";
+const STORAGE_KEY = "tasadorMvp.assessments.v1";
+const OLD_DRAFT_KEY = "tasadorMvp.inspectionDraft.v1";
 
 const form = document.querySelector("#inspection-form");
 const message = document.querySelector("#form-message");
+const portfolioMessage = document.querySelector("#portfolio-message");
+const assessmentList = document.querySelector("#assessment-list");
+const newAssessmentButton = document.querySelector("#new-assessment");
+const pageTitle = document.querySelector("#page-title");
 
+const comparableEditor = document.querySelector("#comparable-editor");
+const comparableList = document.querySelector("#comparable-list");
+const comparableMessage = document.querySelector("#comparable-message");
+const addComparableButton = document.querySelector("#add-comparable");
+
+const sourceInput = document.querySelector("#comparable-source");
+const priceInput = document.querySelector("#comparable-price");
+const dateInput = document.querySelector("#comparable-date");
+const areaInput = document.querySelector("#comparable-area");
+const areaTypeInput = document.querySelector("#comparable-area-type");
+const locationInput = document.querySelector("#comparable-location");
+const urlInput = document.querySelector("#comparable-url");
+const notesInput = document.querySelector("#comparable-notes");
+const verifiedInput = document.querySelector("#comparable-verified");
+const attachmentInput = document.querySelector("#attachment-input");
+const attachmentList = document.querySelector("#attachment-list");
+const attachmentMessage = document.querySelector("#attachment-message");
+const saveAttachmentsButton = document.querySelector("#save-attachments");
+
+
+let assessments = [];
+let activeId = null;
+let comparableRecords = [];
+let editingComparableId = null;
+let isDirty = false;
 let saveTimer;
 
-function getFormData() {
-    return Object.fromEntries(new FormData(form).entries());
-}
 
-function saveDraft() {
-    const draft = {
-        version: 1,
-        savedAt: new Date().toISOString(),
-        data: getFormData(),
+
+const statusLabels = {
+    pendiente: "Pendiente",
+    inspeccion: "Inspección",
+    revision: "En revisión",
+    entregada: "Entregada",
     };
 
+    const sourceLabels = {
+    anuncio: "Anuncio",
+    venta: "Venta cerrada",
+    tasacion: "Tasación previa",
+    fiscal: "Valor fiscal",
+    otro: "Otra fuente",
+};
+
+function createId() {
+    if (window.crypto && typeof window.crypto.randomUUID === "function") {
+        return window.crypto.randomUUID();
+    }
+
+    return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function readAssessments() {
     try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(draft));
-        message.textContent = "Borrador guardado en este navegador.";
+        const savedText = localStorage.getItem(STORAGE_KEY);
+
+        if (savedText) {
+        const savedData = JSON.parse(savedText);
+
+        if (
+            savedData.version === 1 &&
+            Array.isArray(savedData.assessments)
+        ) {
+            return savedData.assessments.map((assessment) => ({
+            ...assessment,
+            comparables: Array.isArray(assessment.comparables)
+                ? assessment.comparables
+                : [],
+            }));
+        }
+        }
+
+        // Conserva el borrador creado en la etapa anterior.
+        const oldDraftText = localStorage.getItem(OLD_DRAFT_KEY);
+
+        if (oldDraftText) {
+        const oldDraft = JSON.parse(oldDraftText);
+
+        if (oldDraft.version === 1 && oldDraft.data) {
+            const now = new Date().toISOString();
+
+            const migratedAssessment = {
+            id: createId(),
+            createdAt: oldDraft.savedAt || now,
+            updatedAt: oldDraft.savedAt || now,
+            data: oldDraft.data,
+            comparables: [],
+            };
+
+            const migratedList = [migratedAssessment];
+
+            localStorage.setItem(
+            STORAGE_KEY,
+            JSON.stringify({
+                version: 1,
+                assessments: migratedList,
+            })
+            );
+
+            return migratedList;
+        }
+        }
+    } catch (error) {
+        portfolioMessage.textContent =
+        "No se pudieron cargar las tasaciones guardadas.";
+    }
+
+    return [];
+}
+
+function persistAssessments(nextAssessments) {
+    try {
+        localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+            version: 1,
+            assessments: nextAssessments,
+        })
+        );
+
         return true;
     } catch (error) {
-        message.textContent = "No se pudo guardar el borrador en este navegador.";
+        portfolioMessage.textContent =
+        "No se pudieron guardar los cambios en este navegador.";
         return false;
     }
 }
 
-function loadDraft() {
-    let savedDraft;
-
+async function loadAssessmentsFromServer() {
     try {
-    const savedText = localStorage.getItem(STORAGE_KEY);
+        const response = await fetch("http://127.0.0.1:8000/assessments");
 
-    if (!savedText) {
-        return;
+        if (!response.ok) {
+            throw new Error(`Error HTTP ${response.status}`);
         }
 
-        savedDraft = JSON.parse(savedText);
+        const remoteAssessments = await response.json();
+
+        if (!Array.isArray(remoteAssessments)) {
+            throw new Error("Respuesta inesperada del servidor");
+        }
+
+        const mergedById = new Map(
+            assessments.map((item) => [item.id, item])
+        );
+
+        for (const remote of remoteAssessments) {
+            const local = mergedById.get(remote.id);
+
+            if (
+                !local ||
+                Date.parse(remote.updatedAt) > Date.parse(local.updatedAt)
+            ) {
+                mergedById.set(remote.id, remote);
+            }
+        }
+
+        const mergedAssessments = Array.from(mergedById.values())
+            .sort(
+                (a, b) =>
+                    Date.parse(b.updatedAt) - Date.parse(a.updatedAt)
+            );
+
+        if (!persistAssessments(mergedAssessments)) {
+            return;
+        }
+
+        assessments = mergedAssessments;
+        renderAssessments();
+        portfolioMessage.textContent = "Tasaciones cargadas desde el servidor.";
     } catch (error) {
-        message.textContent = "No se pudo leer el borrador guardado.";
+        portfolioMessage.textContent =
+            "No se pudieron cargar las tasaciones del servidor; se conservan las locales.";
+    }
+}
+
+
+function getFormData() {
+    return Object.fromEntries(new FormData(form).entries());
+    }
+
+    function formatDate(dateText) {
+    const date = new Date(dateText);
+
+    if (Number.isNaN(date.getTime())) {
+        return "fecha desconocida";
+    }
+
+    return new Intl.DateTimeFormat("es-CL", {
+        dateStyle: "short",
+        timeStyle: "short",
+    }).format(date);
+}
+
+function formatCurrency(amount) {
+    return new Intl.NumberFormat("es-CL", {
+        style: "currency",
+        currency: "CLP",
+        maximumFractionDigits: 0,
+    }).format(amount);
+}
+
+function renderAssessments() {
+    assessmentList.replaceChildren();
+
+    if (assessments.length === 0) {
+        const emptyItem = document.createElement("li");
+        emptyItem.className = "empty-state";
+        emptyItem.textContent = "Todavía no hay tasaciones guardadas.";
+        assessmentList.append(emptyItem);
         return;
     }
 
-    if (
-        savedDraft.version !== 1 ||
-        !savedDraft.data ||
-        typeof savedDraft.data !== "object"
-    ) {
-        message.textContent = "El formato del borrador guardado no es válido.";
+    for (const assessment of assessments) {
+        const item = document.createElement("li");
+        item.className = "assessment-card";
+
+        const details = document.createElement("div");
+        const title = document.createElement("h3");
+        const location = document.createElement("p");
+        const status = document.createElement("p");
+
+        title.textContent =
+        assessment.data.address?.trim() || "Tasación sin dirección";
+
+        location.textContent =
+        [assessment.data.commune, assessment.data.region]
+            .filter(Boolean)
+            .join(", ") || "Ubicación pendiente";
+
+        const statusText =
+        statusLabels[assessment.data.status] || "Estado sin definir";
+
+        status.textContent =
+        `${statusText} · Actualizada ${formatDate(assessment.updatedAt)}`;
+
+        details.append(title, location, status);
+
+        const actions = document.createElement("div");
+        actions.className = "assessment-actions";
+
+        const openButton = document.createElement("button");
+        openButton.type = "button";
+        openButton.className = "secondary";
+        openButton.textContent = "Abrir";
+        openButton.addEventListener("click", () => {
+        openAssessment(assessment.id);
+        });
+
+        const deleteButton = document.createElement("button");
+        deleteButton.type = "button";
+        deleteButton.className = "danger";
+        deleteButton.textContent = "Eliminar";
+        deleteButton.addEventListener("click", () => {
+        deleteAssessment(assessment.id);
+        });
+
+        actions.append(openButton, deleteButton);
+        item.append(details, actions);
+        assessmentList.append(item);
+    }
+}
+
+function renderComparables() {
+    comparableList.replaceChildren();
+
+    if (comparableRecords.length === 0) {
+        const emptyItem = document.createElement("li");
+        emptyItem.className = "empty-state";
+        emptyItem.textContent = "Esta tasación todavía no tiene comparables.";
+        comparableList.append(emptyItem);
         return;
     }
 
-    for (const [name, value] of Object.entries(savedDraft.data)) {
+    for (const comparable of comparableRecords) {
+        const item = document.createElement("li");
+        item.className = "assessment-card";
+
+        const details = document.createElement("div");
+        const title = document.createElement("h4");
+        const location = document.createElement("p");
+        const areaDescription =
+        comparable.areaType === "terreno"
+            ? "superficie de terreno"
+            : "superficie construida";
+
+        const pricePerSquareMeter =
+        comparable.price / comparable.area;
+
+        title.textContent =
+        `${sourceLabels[comparable.source] || "Otra fuente"} · ` +
+        formatCurrency(comparable.price);
+
+        location.textContent = comparable.location;
+
+        const measurement = document.createElement("p");
+        measurement.textContent =
+        `${comparable.area} m² de ${areaDescription} · ` +
+        `${formatCurrency(pricePerSquareMeter)} / m²`;
+
+        const referenceDate = document.createElement("p");
+        referenceDate.textContent =
+        `Fecha: ${comparable.date} · ` +
+        (comparable.verified
+            ? "Verificado por el tasador"
+            : "Pendiente de verificar");
+
+        details.append(title, location, measurement, referenceDate);
+
+        if (comparable.notes) {
+        const notes = document.createElement("p");
+        notes.textContent = comparable.notes;
+        details.append(notes);
+        }
+
+        if (comparable.url) {
+        const link = document.createElement("a");
+        link.href = comparable.url;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = "Abrir fuente";
+        details.append(link);
+        }
+
+        const actions = document.createElement("div");
+        actions.className = "assessment-actions";
+
+        const editButton = document.createElement("button");
+        editButton.type = "button";
+        editButton.className = "secondary";
+        editButton.textContent = "Editar";
+        editButton.addEventListener("click", () => {
+        editComparable(comparable.id);
+        });
+
+        const deleteButton = document.createElement("button");
+        deleteButton.type = "button";
+        deleteButton.className = "danger";
+        deleteButton.textContent = "Eliminar";
+        deleteButton.addEventListener("click", () => {
+        deleteComparable(comparable.id);
+        });
+
+        actions.append(editButton, deleteButton);
+        item.append(details, actions);
+        comparableList.append(item);
+        renderReferenceRange();
+    }
+}
+
+function saveActiveAssessment(forceSave = false) {
+    if (!isDirty && !forceSave) {
+        return true;
+    }
+
+    const existing = assessments.find(
+        (assessment) => assessment.id === activeId
+    );
+
+    const now = new Date().toISOString();
+
+    const assessment = {
+        id: activeId || createId(),
+        createdAt: existing?.createdAt || now,
+        updatedAt: now,
+        data: getFormData(),
+        comparables: comparableRecords,
+    };
+
+    const nextAssessments = existing
+        ? assessments.map((item) =>
+            item.id === assessment.id ? assessment : item
+        )
+        : [assessment, ...assessments];
+
+    if (!persistAssessments(nextAssessments)) {
+        return false;
+    }
+
+    assessments = nextAssessments;
+    activeId = assessment.id;
+    isDirty = false;
+
+    // Evita redibujar la lista en cada autoguardado.
+    if (forceSave || !existing) {
+        renderAssessments();
+    }
+
+    message.textContent = "Tasación guardada localmente.";
+    syncAssessmentToServer(assessment);
+
+    return true;
+}
+
+
+function escapeReportHtml(value) {
+    return String(value ?? "").replace(/[&<>"']/g, (character) => {
+        const entities = {
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#39;",
+        };
+
+        return entities[character];
+    });
+}
+
+function formatReportCLP(value) {
+    const amount = Number(value);
+
+    if (!Number.isFinite(amount)) {
+        return "—";
+    }
+
+    return new Intl.NumberFormat("es-CL", {
+        style: "currency",
+        currency: "CLP",
+        maximumFractionDigits: 0,
+    }).format(amount);
+}
+
+document
+    .getElementById("generate-report")
+    .addEventListener("click", () => {
+        if (!form.reportValidity()) {
+            return;
+        }
+
+        if (!saveActiveAssessment(true)) {
+            return;
+        }
+
+        const assessment = assessments.find((item) => item.id === activeId);
+
+        if (!assessment) {
+            message.textContent = "No se encontró la tasación para generar el informe.";
+            return;
+        }
+
+        const data = assessment.data;
+        const comparables = assessment.comparables || [];
+
+        const comparableRows = comparables.map((item) => {
+            const pricePerM2 = Number(item.price) / Number(item.area);
+
+            return `
+                <tr>
+                    <td>${escapeReportHtml(item.source)}</td>
+                    <td>${escapeReportHtml(item.location)}</td>
+                    <td>${escapeReportHtml(item.date)}</td>
+                    <td>${escapeReportHtml(item.area)} m² (${escapeReportHtml(item.areaType)})</td>
+                    <td>${formatReportCLP(item.price)}</td>
+                    <td>${formatReportCLP(pricePerM2)} / m²</td>
+                </tr>
+            `;
+        }).join("");
+
+        const areaType =
+            document.getElementById("value-range-area-type")?.value || "construida";
+        const subjectArea = Number(
+            areaType === "construida" ? data.builtArea : data.landArea
+        );
+        const range = calculateReferenceRange(
+            comparables,
+            subjectArea,
+            areaType
+        );
+
+        const rangeHtml = range
+            ? `<p>Desde: ${formatReportCLP(range.low)} · Referencia: ${formatReportCLP(range.reference)} · Hasta: ${formatReportCLP(range.high)}</p>`
+            : "<p>No hay suficientes comparables compatibles para calcular un rango.</p>";
+
+        const reportWindow = window.open("", "_blank");
+
+        if (!reportWindow) {
+            message.textContent =
+                "El navegador bloqueó la ventana del informe. Permite las ventanas emergentes e inténtalo de nuevo.";
+            return;
+        }
+
+        reportWindow.document.write(`
+            <!doctype html>
+            <html lang="es">
+            <head>
+                <meta charset="utf-8">
+                <title>Informe de tasación</title>
+                <style>
+                    body { font-family: Arial, sans-serif; margin: 32px; color: #222; }
+                    h1, h2 { margin-bottom: 8px; }
+                    p { white-space: pre-wrap; }
+                    table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+                    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+                    @media print { body { margin: 18mm; } }
+                </style>
+            </head>
+            <body>
+                <h1>Informe de tasación</h1>
+                <p>Fecha de generación: ${escapeReportHtml(new Date().toLocaleDateString("es-CL"))}</p>
+
+                <h2>Identificación de la propiedad</h2>
+                <p><strong>Tipo:</strong> ${escapeReportHtml(data.propertyType)}</p>
+                <p><strong>Ubicación:</strong> ${escapeReportHtml(data.address)}, ${escapeReportHtml(data.commune)}, ${escapeReportHtml(data.region)}</p>
+                <p><strong>Superficie construida:</strong> ${escapeReportHtml(data.builtArea)} m²</p>
+                <p><strong>Superficie de terreno:</strong> ${escapeReportHtml(data.landArea)} m²</p>
+                <p><strong>Dormitorios:</strong> ${escapeReportHtml(data.bedrooms)} · <strong>Baños:</strong> ${escapeReportHtml(data.bathrooms)}</p>
+
+                <h2>Inspección</h2>
+                <p><strong>Estado de conservación:</strong> ${escapeReportHtml(data.condition)}</p>
+                <p><strong>Materiales:</strong> ${escapeReportHtml(data.materials)}</p>
+                <p><strong>Distribución:</strong> ${escapeReportHtml(data.distribution)}</p>
+                <p><strong>Observaciones:</strong> ${escapeReportHtml(data.observations)}</p>
+
+                <h2>Estudio de comparables</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Fuente</th><th>Ubicación</th><th>Fecha</th>
+                            <th>Superficie</th><th>Precio</th><th>Precio por m²</th>
+                        </tr>
+                    </thead>
+                    <tbody>${comparableRows || "<tr><td colspan='6'>No hay comparables registrados.</td></tr>"}</tbody>
+                </table>
+
+                <h2>Rango de valor de referencia</h2>
+                ${rangeHtml}
+
+                <p><em>Este rango es referencial y debe ser revisado por el tasador junto con los antecedentes y características de la propiedad.</em></p>
+            </body>
+            </html>
+        `);
+
+        reportWindow.document.close();
+        reportWindow.focus();
+        setTimeout(() => reportWindow.print(), 300);
+    });
+
+
+function scheduleSave() {
+    isDirty = true;
+    window.clearTimeout(saveTimer);
+
+    saveTimer = window.setTimeout(() => {
+        saveTimer = null;
+
+        saveActiveAssessment(); 
+    }, 500000);
+}
+
+
+function flushPendingSave() {
+    window.clearTimeout(saveTimer);
+    saveTimer = null;
+
+    if (isDirty) {
+        saveActiveAssessment();
+    }
+}
+
+function clearComparableEditor() {
+    editingComparableId = null;
+    sourceInput.value = "anuncio";
+    priceInput.value = "";
+    dateInput.value = "";
+    areaInput.value = "";
+    areaTypeInput.value = "construida";
+    locationInput.value = "";
+    urlInput.value = "";
+    notesInput.value = "";
+    verifiedInput.checked = false;
+    addComparableButton.textContent = "Agregar comparable";
+}
+ // ...código que prepara una ficha nueva
+function startNewAssessment() {
+    flushPendingSave();
+
+    activeId = null;
+    comparableRecords = [];
+    isDirty = false;
+    form.reset();
+    clearComparableEditor();
+    renderComparables();
+    renderAttachments();
+
+    pageTitle.textContent = "Nueva tasación";
+    message.textContent = "Los cambios se guardarán automáticamente.";
+    comparableMessage.textContent = "";
+}
+// ...código que carga la tasación y sus datos...
+function openAssessment(id) {
+    console.trace("openAssessment", id)//DEGBUG
+    flushPendingSave();
+
+    const assessment = assessments.find((item) => item.id === id);
+
+    if (!assessment) {
+        return;
+    }
+
+    form.reset();
+    activeId = assessment.id;
+    comparableRecords = assessment.comparables || [];
+    isDirty = false;
+
+    for (const [name, value] of Object.entries(assessment.data)) {
         const field = form.elements.namedItem(name);
 
         if (field && typeof value === "string") {
@@ -59,18 +621,431 @@ function loadDraft() {
         }
     }
 
-    message.textContent = "Se recuperó el borrador de este navegador.";
+    clearComparableEditor();
+    renderComparables();
+    renderAttachments();
+
+    pageTitle.textContent = "Editar tasación";
+    message.textContent =
+        "Editando una tasación. Los cambios se guardan automáticamente.";
+    comparableMessage.textContent = "";
+}
+// ...código que quita la tasación de la lista...
+function deleteAssessment(id) {
+    const assessment = assessments.find((item) => item.id === id);
+
+    if (!assessment) {
+        return;
+    }
+
+    const confirmed = window.confirm(
+        "¿Eliminar esta tasación y sus comparables? Esta acción no se puede deshacer."
+    );
+
+    if (!confirmed) {
+        return;
+    }
+
+    const nextAssessments = assessments.filter((item) => item.id !== id);
+
+    if (!persistAssessments(nextAssessments)) {
+        return;
+    }
+
+    assessments = nextAssessments;
+     // Elimina de IndexedDB los archivos asociados a esta tasación.
+    window.TasadorFileStore
+        .removeForAssessment(id)
+        .catch(() => {
+            attachmentMessage.textContent =
+                "La ficha se eliminó, pero no se pudieron borrar sus archivos locales.";
+        });
+
+    if (activeId === id) {
+        activeId = null;
+        comparableRecords = [];
+        isDirty = false;
+        form.reset();
+        clearComparableEditor();
+        renderComparables();
+        pageTitle.textContent = "Nueva tasación";
+        message.textContent = "";
+    }
+
+    portfolioMessage.textContent = "Tasación eliminada.";
+    renderAssessments();
 }
 
-function scheduleSave() {
-    window.clearTimeout(saveTimer);
-    saveTimer = window.setTimeout(saveDraft, 400);
+function parsePrice(value) {
+    const digitsOnly = value.replace(/[^\d]/g, "");
+    return digitsOnly ? Number(digitsOnly) : NaN;
 }
 
-loadDraft();
+function parseArea(value) {
+     return Number(value.trim().replace(",", "."));
+}
 
-form.addEventListener("input", scheduleSave);
-form.addEventListener("change", saveDraft);
+function addOrUpdateComparable() {
+    const price = parsePrice(priceInput.value);
+    const area = parseArea(areaInput.value);
+    const date = dateInput.value;
+    const location = locationInput.value.trim();
+    const urlText = urlInput.value.trim();
+
+    if (!Number.isFinite(price) || price <= 0) {
+        comparableMessage.textContent =
+        "Ingresa un precio válido en pesos chilenos.";
+        return;
+    }
+
+    if (!date) {
+        comparableMessage.textContent =
+        "Ingresa la fecha de referencia.";
+        return;
+    }
+
+    if (!Number.isFinite(area) || area <= 0) {
+        comparableMessage.textContent =
+        "Ingresa una superficie válida mayor que cero.";
+        return;
+    }
+
+    if (!location) {
+        comparableMessage.textContent =
+        "Ingresa la ubicación del comparable.";
+        return;
+    }
+
+    let safeUrl = "";
+
+    if (urlText) {
+        try {
+        const parsedUrl = new URL(urlText);
+
+        if (!["http:", "https:"].includes(parsedUrl.protocol)) {
+            throw new Error("Protocolo no permitido");
+        }
+
+        safeUrl = parsedUrl.href;
+        } catch (error) {
+        comparableMessage.textContent =
+            "El enlace debe ser una dirección web válida que empiece con https:// o http://.";
+        return;
+        }
+    }
+
+    const comparable = {
+        id: editingComparableId || createId(),
+        source: sourceInput.value,
+        price,
+        date,
+        area,
+        areaType: areaTypeInput.value,
+        location,
+        notes: notesInput.value.trim(),
+        url: safeUrl,
+        verified: verifiedInput.checked,
+    };
+
+    comparableRecords = editingComparableId
+        ? comparableRecords.map((item) =>
+            item.id === editingComparableId ? comparable : item
+        )
+        : [...comparableRecords, comparable];
+
+    clearComparableEditor();
+    renderComparables();
+    comparableMessage.textContent = "Comparable agregado a la tasación.";
+    scheduleSave();
+}
+
+function editComparable(id) {
+    const comparable = comparableRecords.find((item) => item.id === id);
+
+    if (!comparable) {
+        return;
+    }
+
+    editingComparableId = id;
+    sourceInput.value = comparable.source;
+    priceInput.value = String(comparable.price);
+    dateInput.value = comparable.date;
+    areaInput.value = String(comparable.area).replace(".", ",");
+    areaTypeInput.value = comparable.areaType;
+    locationInput.value = comparable.location;
+    urlInput.value = comparable.url;
+    notesInput.value = comparable.notes;
+    verifiedInput.checked = comparable.verified;
+    addComparableButton.textContent = "Actualizar comparable";
+    comparableMessage.textContent =
+        "Edita los datos y pulsa «Actualizar comparable».";
+}
+
+function deleteComparable(id) {
+    const confirmed = window.confirm("¿Eliminar este comparable?");
+
+    if (!confirmed) {
+        return;
+    }
+
+    comparableRecords = comparableRecords.filter((item) => item.id !== id);
+
+    if (editingComparableId === id) {
+        clearComparableEditor();
+    }
+
+    renderComparables();
+    comparableMessage.textContent = "Comparable eliminado.";
+    scheduleSave();
+}
+
+function calculateReferenceRange(comparables, subjectAreaM2, areaType) {
+    const pricesPerM2 = comparables
+        .filter((item) => item.areaType === areaType && item.source !== "fiscal")
+        .map((item) => Number(item.price) / Number(item.area))
+        .filter((value) => Number.isFinite(value) && value > 0)
+        .sort((a, b) => a - b);
+
+    if (
+        pricesPerM2.length < 2 ||
+        !Number.isFinite(subjectAreaM2) ||
+        subjectAreaM2 <= 0
+    ) {
+        return null;
+    }
+
+    function percentile(values, p) {
+        const position = (values.length - 1) * p;
+        const lower = Math.floor(position);
+        const fraction = position - lower;
+        const upper = Math.ceil(position);
+
+        return values[lower] + (values[upper] - values[lower]) * fraction;
+    }
+
+    return {
+        low: Math.round(percentile(pricesPerM2, 0.25) * subjectAreaM2),
+        reference: Math.round(percentile(pricesPerM2, 0.50) * subjectAreaM2),
+        high: Math.round(percentile(pricesPerM2, 0.75) * subjectAreaM2),
+    };
+}
+
+function renderReferenceRange() {
+    const areaType = document.getElementById("value-range-area-type").value;
+    const areaField = form.elements.namedItem(
+        areaType === "construida" ? "builtArea" : "landArea"
+    );
+    const subjectAreaM2 = Number(areaField.value);
+
+    const result = calculateReferenceRange(
+        comparableRecords,
+        subjectAreaM2,
+        areaType
+    );
+
+    const message = document.getElementById("value-range-message");
+    const low = document.getElementById("value-range-low");
+    const reference = document.getElementById("value-range-reference");
+    const high = document.getElementById("value-range-high");
+
+    if (!result) {
+        low.textContent = "—";
+        reference.textContent = "—";
+        high.textContent = "—";
+        message.textContent =
+            "Ingresa la superficie de la tasación y agrega al menos dos comparables del mismo tipo de superficie.";
+        return;
+    }
+
+    const formatCLP = (amount) =>
+        new Intl.NumberFormat("es-CL", {
+            style: "currency",
+            currency: "CLP",
+            maximumFractionDigits: 0,
+        }).format(amount);
+
+    low.textContent = formatCLP(result.low);
+    reference.textContent = formatCLP(result.reference);
+    high.textContent = formatCLP(result.high);
+    message.textContent =
+        "Estimación referencial; revisa la ubicación, fecha y características de cada comparable.";
+}
+
+
+
+function formatFileSize(bytes) {
+    if (bytes < 1024) {
+        return `${bytes} B`;
+    }
+
+    if (bytes < 1024 * 1024) {
+        return `${(bytes / 1024).toFixed(1)} KB`;
+    }
+
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+async function syncAssessmentToServer(assessment) {
+    try {
+        const response = await fetch("http://127.0.0.1:8000/assessments", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(assessment),
+        });
+
+        if (!response.ok) {
+            throw new Error(`Error HTTP ${response.status}`);
+        }
+
+        message.textContent = "Tasación guardada localmente y enviada al servidor.";
+    } catch (error) {
+        message.textContent =
+            "Tasación guardada localmente; no se pudo enviar al servidor.";
+    }
+}
+
+
+async function renderAttachments() {
+    attachmentList.replaceChildren();
+
+    if (!activeId) {
+        const emptyItem = document.createElement("li");
+        emptyItem.className = "empty-state";
+        emptyItem.textContent =
+        "Añade un archivo para crear la ficha y asociarlo a ella.";
+        attachmentList.append(emptyItem);
+        return;
+    }
+
+    const requestedAssessmentId = activeId;
+
+    try {
+        const attachments =
+        await window.TasadorFileStore.listByAssessment(activeId);
+
+        // Evita mostrar archivos de otra ficha si se cambió de tasación
+        // mientras la base local respondía.
+        if (activeId !== requestedAssessmentId) {
+        return;
+        }
+
+        if (attachments.length === 0) {
+        const emptyItem = document.createElement("li");
+        emptyItem.className = "empty-state";
+        emptyItem.textContent = "Esta tasación aún no tiene archivos.";
+        attachmentList.append(emptyItem);
+        return;
+        }
+
+        for (const attachment of attachments) {
+        const item = document.createElement("li");
+        item.className = "assessment-card";
+
+        const details = document.createElement("div");
+        const fileName = document.createElement("strong");
+        const fileInfo = document.createElement("p");
+
+        fileName.textContent = attachment.name;
+        fileInfo.textContent =
+            `${attachment.type || "Tipo desconocido"} · ` +
+            formatFileSize(attachment.size);
+
+        details.append(fileName, fileInfo);
+
+        const deleteButton = document.createElement("button");
+        deleteButton.type = "button";
+        deleteButton.className = "danger";
+        deleteButton.textContent = "Eliminar";
+        deleteButton.addEventListener("click", () => {
+            removeAttachment(attachment.id);
+        });
+
+        const actions = document.createElement("div");
+        actions.className = "assessment-actions";
+        actions.append(deleteButton);
+
+        item.append(details, actions);
+        attachmentList.append(item);
+        }
+    } catch (error) {
+        attachmentMessage.textContent =
+        "No se pudieron leer los archivos de esta tasación.";
+    }
+}
+
+async function saveSelectedAttachments() {
+    const files = Array.from(attachmentInput.files || []);
+
+    if (files.length === 0) {
+        attachmentMessage.textContent = "Primero selecciona uno o más archivos.";
+        return;
+    }
+
+    flushPendingSave();
+
+    // Si es una tasación nueva, crea su ficha para poder asociarle los archivos.
+    if (!activeId) {
+        isDirty = true;
+
+        if (!saveActiveAssessment(true)) {
+        attachmentMessage.textContent =
+            "No se pudo crear la ficha para asociar los archivos.";
+        return;
+        }
+    }
+
+    try {
+        for (const file of files) {
+        await window.TasadorFileStore.save({
+            id: createId(),
+            assessmentId: activeId,
+            name: file.name,
+            type: file.type,
+            size: file.size,
+            createdAt: new Date().toISOString(),
+            blob: file,
+        });
+        }
+
+        attachmentInput.value = "";
+        saveActiveAssessment(true);
+        await renderAttachments();
+
+        attachmentMessage.textContent =
+        "Archivos guardados en este dispositivo.";
+    } catch (error) {
+        attachmentMessage.textContent =
+        "No se pudieron guardar todos los archivos. Revisa el espacio disponible.";
+        await renderAttachments();
+    }
+}
+
+async function removeAttachment(attachmentId) {
+    try {
+        await window.TasadorFileStore.remove(attachmentId);
+        await renderAttachments();
+
+        attachmentMessage.textContent = "Archivo eliminado.";
+        saveActiveAssessment(true);
+    } catch (error) {
+        attachmentMessage.textContent = "No se pudo eliminar el archivo.";
+    }
+}
+
+
+form.addEventListener("input", (event) => {
+    if (!comparableEditor.contains(event.target)) {
+        scheduleSave();
+    }
+});
+
+form.addEventListener("change", (event) => {
+    if (!comparableEditor.contains(event.target)) {
+        scheduleSave();
+    }
+});
 
 form.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -79,13 +1054,25 @@ form.addEventListener("submit", (event) => {
         return;
     }
 
-    const wasSaved = saveDraft();
+    window.clearTimeout(saveTimer);
+    saveActiveAssessment(true);
+    });
 
-    if (wasSaved) {
-        message.textContent =
-        "Ficha validada y borrador guardado en este navegador.";
-    } else {
-        message.textContent =
-        "Ficha validada, pero no se pudo guardar el borrador.";
-    }
-});
+addComparableButton.addEventListener("click", addOrUpdateComparable);
+newAssessmentButton.addEventListener("click", startNewAssessment);
+
+
+saveAttachmentsButton.addEventListener("click", saveSelectedAttachments);
+document
+    .getElementById("value-range-area-type")
+    .addEventListener("change", renderReferenceRange);
+
+form.elements.namedItem("builtArea").addEventListener("input", renderReferenceRange);
+
+form.elements.namedItem("landArea").addEventListener("input", renderReferenceRange);
+
+assessments = readAssessments();
+renderAssessments();
+renderComparables();
+startNewAssessment();
+loadAssessmentsFromServer();

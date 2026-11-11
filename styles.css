@@ -70,6 +70,7 @@ textarea {
 
 button {
     margin-top: 20px;
+    margin-left: 15px;
     padding: 11px 18px;
     color: white;
     background: #28734b;
@@ -104,4 +105,119 @@ button:hover {
 .full-width {
         grid-column: auto;
 }
+.portfolio-card {
+    margin-bottom: 20px;
+}
+
+.section-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.section-heading h2 {
+    margin-bottom: 0;
+}
+
+.assessment-list {
+    display: grid;
+    gap: 12px;
+    margin: 20px 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.assessment-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 16px;
+    border: 1px solid #dce5df;
+    border-radius: 8px;
+}
+
+.assessment-card h3,.assessment-card p {
+    margin: 0 0 6px;
+}
+
+.assessment-actions {
+    display: flex;
+    gap: 8px;
+}
+
+button.secondary {
+    color: #205b3c;
+    background: #e8f1eb;
+}
+
+button.danger {
+    color: #8b2222;
+    background: #f9e8e8;
+}
+
+.empty-state {
+    color: #53645a;
+}
+
+@media (max-width: 600px) {
+    .section-heading,
+    .assessment-card {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .assessment-actions button {
+        flex: 1;
+    }
+}
+.comparable-section {
+    margin-top: 28px;
+    padding-top: 22px;
+    border-top: 1px solid #dce5df;
+}
+
+.helper-text {
+    color: #53645a;
+}
+
+.comparable-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.verification-option {
+    display: flex;
+    align-items: center;
+}
+
+.verification-option input {
+    width: auto;
+}
+
+@media (max-width: 600px) {
+    .comparable-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.attachment-section {
+    margin-top: 28px;
+    padding-top: 22px;
+    border-top: 1px solid #dce5df;
+}
+
+.attachment-controls {
+    display: grid;
+    gap: 12px;
+    margin-top: 12px;
+}
+
+.attachment-controls input {
+    padding: 8px 0;
+    border: 0;
+}
+
 }
