@@ -26,7 +26,7 @@ const attachmentInput = document.querySelector("#attachment-input");
 const attachmentList = document.querySelector("#attachment-list");
 const attachmentMessage = document.querySelector("#attachment-message");
 const saveAttachmentsButton = document.querySelector("#save-attachments");
-
+const API_BASE_URL = "http://127.0.0.1:8000";
 
 let assessments = [];
 let activeId = null;
@@ -136,6 +136,77 @@ function persistAssessments(nextAssessments) {
     }
 }
 
+const PENDING_ASSESSMENT_DELETIONS_KEY =
+    "tasador.pendingAssessmentDeletions";
+
+let syncingPendingAssessmentDeletions = false;
+
+function getPendingAssessmentDeletionIds() {
+    try {
+        const ids = JSON.parse(
+            localStorage.getItem(PENDING_ASSESSMENT_DELETIONS_KEY) || "[]"
+        );
+        return Array.isArray(ids) ? ids.map(String) : [];
+    } catch {
+        return [];
+    }
+}
+
+function savePendingAssessmentDeletionIds(ids) {
+    localStorage.setItem(
+        PENDING_ASSESSMENT_DELETIONS_KEY,
+        JSON.stringify([...new Set(ids.map(String))])
+    );
+}
+
+function addPendingAssessmentDeletion(id) {
+    savePendingAssessmentDeletionIds([
+        ...getPendingAssessmentDeletionIds(),
+        String(id),
+    ]);
+}
+
+function removePendingAssessmentDeletion(id) {
+    savePendingAssessmentDeletionIds(
+        getPendingAssessmentDeletionIds().filter(
+            (pendingId) => pendingId !== String(id)
+        )
+    );
+}
+
+async function syncPendingAssessmentDeletions() {
+    if (!navigator.onLine || syncingPendingAssessmentDeletions) return;
+
+    syncingPendingAssessmentDeletions = true;
+
+    try {
+        for (const id of getPendingAssessmentDeletionIds()) {
+            if (!navigator.onLine) break;
+
+            try {
+                const response = await fetch(
+                    `${API_BASE_URL}/assessments/${encodeURIComponent(id)}`,
+                    { method: "DELETE" }
+                );
+
+                if (!response.ok && response.status !== 404) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
+                removePendingAssessmentDeletion(id);
+            } catch (error) {
+                console.error(
+                    `No se pudo sincronizar el borrado de la tasación ${id}:`,
+                    error
+                );
+                break;
+            }
+        }
+    } finally {
+        syncingPendingAssessmentDeletions = false;
+    }
+}
+
 async function loadAssessmentsFromServer() {
     try {
         const response = await fetch("http://127.0.0.1:8000/assessments");
@@ -150,16 +221,47 @@ async function loadAssessmentsFromServer() {
             throw new Error("Respuesta inesperada del servidor");
         }
 
-        const mergedById = new Map(
-            assessments.map((item) => [item.id, item])
+        const pendingDeletionIds = new Set(
+            getPendingAssessmentDeletionIds()
         );
+
+        const mergedById = new Map(
+            assessments
+                .filter((item) => !pendingDeletionIds.has(String(item.id)))
+                .map((item) => [String(item.id), item])
+        );
+
+        const pendingSyncIds = new Set(
+            getPendingSyncIds().map(String)
+        );
+
+        for (const remote of remoteAssessments) {
+            const remoteId = String(remote.id);
+
+            // No permitir que una tasación pendiente de borrar reaparezca.
+            if (pendingDeletionIds.has(remoteId)) continue;
+
+            const local = mergedById.get(remoteId);
+
+            if (
+                !local ||
+                (
+                    !pendingSyncIds.has(remoteId) &&
+                    Date.parse(remote.updatedAt) > Date.parse(local.updatedAt)
+                )
+            ) {
+                mergedById.set(remoteId, remote);
+            }
+        }
+
+
+        const pendingIds = new Set(getPendingSyncIds());
 
         for (const remote of remoteAssessments) {
             const local = mergedById.get(remote.id);
 
-            if (
-                !local ||
-                Date.parse(remote.updatedAt) > Date.parse(local.updatedAt)
+            if (!local || (!pendingIds.has(remote.id) &&
+                Date.parse(remote.updatedAt) > Date.parse(local.updatedAt))
             ) {
                 mergedById.set(remote.id, remote);
             }
@@ -375,6 +477,7 @@ function saveActiveAssessment(forceSave = false) {
         updatedAt: now,
         data: getFormData(),
         comparables: comparableRecords,
+        version: existing?.version ?? 0,
     };
 
     const nextAssessments = existing
@@ -630,51 +733,56 @@ function openAssessment(id) {
         "Editando una tasación. Los cambios se guardan automáticamente.";
     comparableMessage.textContent = "";
 }
-// ...código que quita la tasación de la lista...
-function deleteAssessment(id) {
-    const assessment = assessments.find((item) => item.id === id);
 
-    if (!assessment) {
-        return;
-    }
+// ...código que quita la tasación de la lista...
+//Guarda primero la eliminación pendiente; si no hay conexión, se sincronizará después:
+async function deleteAssessment(id) {
+    const assessment = assessments.find(
+        (item) => String(item.id) === String(id)
+    );
+
+    if (!assessment) return;
 
     const confirmed = window.confirm(
         "¿Eliminar esta tasación y sus comparables? Esta acción no se puede deshacer."
     );
 
-    if (!confirmed) {
-        return;
-    }
+    if (!confirmed) return;
 
-    const nextAssessments = assessments.filter((item) => item.id !== id);
+    addPendingAssessmentDeletion(id);
+
+    const nextAssessments = assessments.filter(
+        (item) => String(item.id) !== String(id)
+    );
 
     if (!persistAssessments(nextAssessments)) {
+        removePendingAssessmentDeletion(id);
         return;
     }
 
     assessments = nextAssessments;
-     // Elimina de IndexedDB los archivos asociados a esta tasación.
-    window.TasadorFileStore
-        .removeForAssessment(id)
-        .catch(() => {
-            attachmentMessage.textContent =
-                "La ficha se eliminó, pero no se pudieron borrar sus archivos locales.";
-        });
+    removePendingSyncId(id);
+    renderAssessments();
 
-    if (activeId === id) {
-        activeId = null;
-        comparableRecords = [];
-        isDirty = false;
-        form.reset();
-        clearComparableEditor();
-        renderComparables();
-        pageTitle.textContent = "Nueva tasación";
-        message.textContent = "";
+    try {
+        await window.TasadorFileStore.removeForAssessment(id);
+    } catch (error) {
+        console.error("No se pudieron borrar los archivos locales:", error);
+        attachmentMessage.textContent =
+            "La tasación se eliminó, pero no se pudieron borrar algunos archivos locales.";
     }
 
-    portfolioMessage.textContent = "Tasación eliminada.";
-    renderAssessments();
+    await syncPendingAssessmentDeletions();
+
+    const stillPending = getPendingAssessmentDeletionIds().includes(
+        String(id)
+    );
+
+    portfolioMessage.textContent = stillPending
+        ? "Tasación eliminada localmente; el borrado del servidor queda pendiente."
+        : "Tasación eliminada de este dispositivo y del servidor.";
 }
+
 
 function parsePrice(value) {
     const digitsOnly = value.replace(/[^\d]/g, "");
@@ -885,7 +993,39 @@ function formatFileSize(bytes) {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+const PENDING_SYNC_KEY = "tasador.pendingSyncIds";
+let syncingPendingAssessments = false;
+
+function getPendingSyncIds() {
+    try {
+        return JSON.parse(localStorage.getItem(PENDING_SYNC_KEY) || "[]");
+    } catch {
+        return [];
+    }
+}
+
+function addPendingSyncId(id) {
+    const ids = getPendingSyncIds();
+
+    if (!ids.includes(id)) {
+        ids.push(id);
+        localStorage.setItem(PENDING_SYNC_KEY, JSON.stringify(ids));
+    }
+}
+
+function removePendingSyncId(id) {
+    const ids = getPendingSyncIds().filter((pendingId) => pendingId !== id);
+    localStorage.setItem(PENDING_SYNC_KEY, JSON.stringify(ids));
+}
+
 async function syncAssessmentToServer(assessment) {
+    addPendingSyncId(assessment.id);
+
+    if (!navigator.onLine) {
+        message.textContent = "Sin conexión; la tasación se sincronizará después.";
+        return false;
+    }
+
     try {
         const response = await fetch("http://127.0.0.1:8000/assessments", {
             method: "POST",
@@ -895,17 +1035,39 @@ async function syncAssessmentToServer(assessment) {
             body: JSON.stringify(assessment),
         });
 
+        if (response.status === 409) {
+            removePendingSyncId(assessment.id);
+            message.textContent =
+                "Conflicto: se conservó la copia local, pero no se sincronizó.";
+            return false;
+        }
+
         if (!response.ok) {
             throw new Error(`Error HTTP ${response.status}`);
         }
 
+        const saved = await response.json();
+
+        const updatedAssessments = assessments.map((item) =>
+            item.id === saved.id
+                ? { ...item, version: saved.version }
+                : item
+        );
+
+        if (!persistAssessments(updatedAssessments)) {
+            throw new Error("No se pudo guardar la versión localmente");
+        }
+
+        assessments = updatedAssessments;
+        removePendingSyncId(assessment.id);
         message.textContent = "Tasación guardada localmente y enviada al servidor.";
+        return true;
     } catch (error) {
         message.textContent =
-            "Tasación guardada localmente; no se pudo enviar al servidor.";
+            "Tasación guardada localmente; se reintentará al recuperar la conexión.";
+        return false;
     }
 }
-
 
 async function renderAttachments() {
     attachmentList.replaceChildren();
@@ -914,7 +1076,249 @@ async function renderAttachments() {
         const emptyItem = document.createElement("li");
         emptyItem.className = "empty-state";
         emptyItem.textContent =
-        "Añade un archivo para crear la ficha y asociarlo a ella.";
+            "Añade un archivo para crear la ficha y asociarlo a ella.";
+        attachmentList.append(emptyItem);
+        return;
+    }
+
+    const requestedAssessmentId = activeId;
+    let localAttachments = [];
+    let serverAttachments = [];
+    let serverListLoaded = false;
+
+    try {
+        localAttachments =
+            await window.TasadorFileStore.listByAssessment(
+                requestedAssessmentId
+            );
+    } catch (error) {
+        console.error("No se pudieron leer los archivos locales:", error);
+    }
+
+    if (navigator.onLine) {
+        try {
+            const response = await fetch(
+                `${API_BASE_URL}/assessments/${encodeURIComponent(
+                    requestedAssessmentId
+                )}/attachments`
+            );
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+
+            serverAttachments = await response.json();
+            serverListLoaded = true;
+        } catch (error) {
+            console.warn("No se pudo consultar el servidor:", error);
+        }
+    }
+
+    if (activeId !== requestedAssessmentId) return;
+
+    const serverById = new Map(
+        serverAttachments.map((item) => [String(item.id), item])
+    );
+    const localIds = new Set(
+        localAttachments.map((item) => String(item.id))
+    );
+
+    const attachments = [
+        ...localAttachments.map((item) => ({
+            ...item,
+            serverSynced:
+                item.serverSynced === true ||
+                serverById.has(String(item.id)),
+            remoteOnly: false,
+        })),
+        ...serverAttachments
+            .filter((item) => !localIds.has(String(item.id)))
+            .map((item) => ({
+                ...item,
+                serverSynced: true,
+                remoteOnly: true,
+            })),
+    ];
+
+    if (attachments.length === 0) {
+        const emptyItem = document.createElement("li");
+        emptyItem.className = "empty-state";
+        emptyItem.textContent = serverListLoaded || !navigator.onLine
+            ? "Esta tasación aún no tiene archivos."
+            : "No hay archivos locales y no se pudo consultar el servidor.";
+        attachmentList.append(emptyItem);
+        return;
+    }
+
+    for (const attachment of attachments) {
+        const item = document.createElement("li");
+        item.className = "assessment-card";
+
+        const details = document.createElement("div");
+        const fileName = document.createElement("strong");
+        const fileInfo = document.createElement("p");
+        const syncStatus = document.createElement("p");
+
+        fileName.textContent = attachment.name;
+        fileInfo.textContent =
+            `${attachment.type || "Tipo desconocido"} · ` +
+            formatFileSize(attachment.size);
+
+        syncStatus.textContent = attachment.remoteOnly
+            ? "Disponible en el servidor; no está guardado en este dispositivo"
+            : attachment.serverSynced
+                ? "Sincronizado con el servidor"
+                : "Pendiente de sincronización";
+
+        details.append(fileName, fileInfo, syncStatus);
+
+        const actions = document.createElement("div");
+        actions.className = "assessment-actions";
+
+        if (attachment.remoteOnly) {
+            const downloadButton = document.createElement("a");
+            downloadButton.className = "button";
+            downloadButton.textContent = "Descargar";
+            downloadButton.href =
+                `${API_BASE_URL}/assessments/${encodeURIComponent(
+                    requestedAssessmentId
+                )}/attachments/${encodeURIComponent(attachment.id)}/file`;
+            downloadButton.target = "_blank";
+            downloadButton.rel = "noopener";
+            actions.append(downloadButton);
+
+            const deleteButton = document.createElement("button");
+            deleteButton.type = "button";
+            deleteButton.className = "danger";
+            deleteButton.textContent = "Eliminar";
+            deleteButton.addEventListener("click", async () => {
+                if (!navigator.onLine) {
+                    attachmentMessage.textContent =
+                        "Conéctate a internet para eliminar este archivo del servidor.";
+                    return;
+                }
+
+                try {
+                    const response = await fetch(
+                        `${API_BASE_URL}/assessments/${encodeURIComponent(
+                            requestedAssessmentId
+                        )}/attachments/${encodeURIComponent(attachment.id)}`,
+                        { method: "DELETE" }
+                    );
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+
+                    await renderAttachments();
+                } catch (error) {
+                    console.error("No se pudo eliminar el archivo:", error);
+                    attachmentMessage.textContent =
+                        "No se pudo eliminar el archivo del servidor.";
+                }
+            });
+            actions.append(deleteButton);
+        } else {
+            const deleteButton = document.createElement("button");
+            deleteButton.type = "button";
+            deleteButton.className = "danger";
+            deleteButton.textContent = "Eliminar";
+            deleteButton.addEventListener("click", () => {
+                removeAttachment(attachment.id);
+            });
+            actions.append(deleteButton);
+        }
+
+        item.append(details, actions);
+        attachmentList.append(item);
+    }
+}
+//el archivo se guarda en el campo blob, y save() permite guardarlo en 
+// IndexedDB usando el mismo id. Descarga el archivo, lo cachea localmente y actualiza la lista:
+async function downloadRemoteAttachment(attachment) {
+    try {
+        const url =
+            `${API_BASE_URL}/assessments/` +
+            `${encodeURIComponent(attachment.assessmentId)}/attachments/` +
+            `${encodeURIComponent(attachment.id)}/file`;
+
+        const response = await fetch(url);
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const blob = await response.blob();
+
+        await window.TasadorFileStore.save({
+            id: attachment.id,
+            assessmentId: attachment.assessmentId,
+            name: attachment.name || "archivo",
+            type: attachment.type || blob.type,
+            size: blob.size,
+            createdAt: attachment.createdAt || new Date().toISOString(),
+            blob,
+            serverSynced: true,
+            serverCreatedAt: attachment.createdAt || null,
+        });
+
+        // También descarga una copia en el dispositivo.
+        const objectUrl = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = objectUrl;
+        link.download = attachment.name || "archivo";
+        document.body.append(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+
+        if (activeId === attachment.assessmentId) {
+            await renderAttachments();
+        }
+
+        attachmentMessage.textContent =
+            "Archivo descargado y guardado en este dispositivo.";
+    } catch (error) {
+        console.error("No se pudo descargar el adjunto:", error);
+        attachmentMessage.textContent =
+            "No se pudo descargar el archivo del servidor.";
+    }
+}
+window.addEventListener("online", () => {
+    syncPendingAttachments().catch(console.error);
+});
+
+window.addEventListener("online", syncPendingAttachmentDeletions);
+
+function openLocalAttachment(attachment) {
+    if (!attachment.blob) {
+        attachmentMessage.textContent =
+            "Este archivo no está guardado en el dispositivo.";
+        return;
+    }
+
+    const objectUrl = URL.createObjectURL(attachment.blob);
+    const link = document.createElement("a");
+
+    link.href = objectUrl;
+    link.target = "_blank";
+    link.rel = "noopener";
+    document.body.append(link);
+    link.click();
+    link.remove();
+
+    // Mantiene la URL disponible mientras el navegador abre el archivo.
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+}
+
+async function renderAttachments() {
+    attachmentList.replaceChildren();
+
+    if (!activeId) {
+        const emptyItem = document.createElement("li");
+        emptyItem.className = "empty-state";
+        emptyItem.textContent =
+            "Añade un archivo para crear la ficha y asociarlo a ella.";
         attachmentList.append(emptyItem);
         return;
     }
@@ -922,64 +1326,186 @@ async function renderAttachments() {
     const requestedAssessmentId = activeId;
 
     try {
-        const attachments =
-        await window.TasadorFileStore.listByAssessment(activeId);
+        const localAttachments =
+            await window.TasadorFileStore.listByAssessment(activeId);
 
-        // Evita mostrar archivos de otra ficha si se cambió de tasación
-        // mientras la base local respondía.
-        if (activeId !== requestedAssessmentId) {
-        return;
+        if (activeId !== requestedAssessmentId) return;
+
+        const attachmentsById = new Map(
+            localAttachments.map((attachment) => [
+                String(attachment.id),
+                { ...attachment, isRemoteOnly: false },
+            ])
+        );
+
+        if (navigator.onLine) {
+            try {
+                const response = await fetch(
+                    `${API_BASE_URL}/assessments/` +
+                    `${encodeURIComponent(requestedAssessmentId)}/attachments`
+                );
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
+                const remoteAttachments = await response.json();
+
+                for (const remote of remoteAttachments) {
+                    const id = String(remote.id);
+                    const local = attachmentsById.get(id);
+
+                    attachmentsById.set(id, local
+                        ? { ...local, serverSynced: true }
+                        : { ...remote, isRemoteOnly: true, serverSynced: true }
+                    );
+                }
+            } catch (error) {
+                console.error(
+                    "No se pudieron cargar los adjuntos del servidor:",
+                    error
+                );
+            }
         }
 
+        if (activeId !== requestedAssessmentId) return;
+
+        const attachments = [...attachmentsById.values()];
+
         if (attachments.length === 0) {
-        const emptyItem = document.createElement("li");
-        emptyItem.className = "empty-state";
-        emptyItem.textContent = "Esta tasación aún no tiene archivos.";
-        attachmentList.append(emptyItem);
-        return;
+            const emptyItem = document.createElement("li");
+            emptyItem.className = "empty-state";
+            emptyItem.textContent = "Esta tasación aún no tiene archivos.";
+            attachmentList.append(emptyItem);
+            return;
         }
 
         for (const attachment of attachments) {
-        const item = document.createElement("li");
-        item.className = "assessment-card";
+            const item = document.createElement("li");
+            item.className = "assessment-card";
 
-        const details = document.createElement("div");
-        const fileName = document.createElement("strong");
-        const fileInfo = document.createElement("p");
+            const details = document.createElement("div");
+            const fileName = document.createElement("strong");
+            const fileInfo = document.createElement("p");
+            const syncStatus = document.createElement("p");
 
-        fileName.textContent = attachment.name;
-        fileInfo.textContent =
-            `${attachment.type || "Tipo desconocido"} · ` +
-            formatFileSize(attachment.size);
+            fileName.textContent = attachment.name;
+            fileInfo.textContent =
+                `${attachment.type || "Tipo desconocido"} · ` +
+                formatFileSize(attachment.size);
 
-        details.append(fileName, fileInfo);
+            syncStatus.textContent = attachment.isRemoteOnly
+                ? "Disponible en el servidor"
+                : attachment.serverSynced
+                    ? "Sincronizado con el servidor"
+                    : "Pendiente de sincronización";
 
-        const deleteButton = document.createElement("button");
-        deleteButton.type = "button";
-        deleteButton.className = "danger";
-        deleteButton.textContent = "Eliminar";
-        deleteButton.addEventListener("click", () => {
-            removeAttachment(attachment.id);
-        });
+            details.append(fileName, fileInfo, syncStatus);
 
-        const actions = document.createElement("div");
-        actions.className = "assessment-actions";
-        actions.append(deleteButton);
+            const actions = document.createElement("div");
+            actions.className = "assessment-actions";
 
-        item.append(details, actions);
-        attachmentList.append(item);
+            if (attachment.isRemoteOnly) {
+                const downloadButton = document.createElement("button");
+                downloadButton.type = "button";
+                downloadButton.textContent = "Descargar";
+                downloadButton.addEventListener("click", () => {
+                    downloadRemoteAttachment(attachment);
+                });
+                actions.append(downloadButton);
+            } else {
+                const openButton = document.createElement("button");
+                openButton.type = "button";
+                openButton.textContent = "Abrir";
+                openButton.addEventListener("click", () => {
+                    openLocalAttachment(attachment);
+                });
+                actions.append(openButton);
+
+                const deleteButton = document.createElement("button");
+                deleteButton.type = "button";
+                deleteButton.className = "danger";
+                deleteButton.textContent = "Eliminar";
+                deleteButton.addEventListener("click", () => {
+                    removeAttachment(attachment.id);
+                });
+                actions.append(deleteButton);
+            }
+
+            item.append(details, actions);
+            attachmentList.append(item);
         }
     } catch (error) {
+        console.error("No se pudieron leer los archivos:", error);
         attachmentMessage.textContent =
-        "No se pudieron leer los archivos de esta tasación.";
+            "No se pudieron leer los archivos de esta tasación.";
     }
 }
+
+
+async function syncPendingAttachments() {
+    if (!navigator.onLine) return 0;
+
+    const attachments = await window.TasadorFileStore.listAll();
+    let failures = 0;
+
+    for (const attachment of attachments) {
+        if (attachment.serverSynced || !attachment.blob) continue;
+
+        try {
+            const formData = new FormData();
+            formData.append("attachment_id", attachment.id);
+            formData.append(
+                "file",
+                attachment.blob,
+                attachment.name || "archivo"
+            );
+
+            const response = await fetch(
+                `${API_BASE_URL}/assessments/${encodeURIComponent(
+                    attachment.assessmentId
+                )}/attachments`,
+                {
+                    method: "POST",
+                    body: formData,
+                }
+            );
+
+            const result = await response.json().catch(() => ({}));
+
+            if (!response.ok) {
+                throw new Error(result.detail || `HTTP ${response.status}`);
+            }
+
+            await window.TasadorFileStore.save({
+                ...attachment,
+                serverSynced: true,
+                serverCreatedAt: result.createdAt,
+            });
+        } catch (error) {
+            failures++;
+            console.error(
+                `No se pudo sincronizar el adjunto ${attachment.id}:`,
+                error
+            );
+        }
+    }
+
+    return failures;
+}
+
+window.addEventListener("online", () => {
+    syncPendingAttachments().catch(console.error);
+window.addEventListener("online", syncPendingAttachmentDeletions);
+});
+
 
 async function saveSelectedAttachments() {
     const files = Array.from(attachmentInput.files || []);
 
     if (files.length === 0) {
-        attachmentMessage.textContent = "Primero selecciona uno o más archivos.";
+        attachmentMessage.textContent =
+            "Primero selecciona uno o más archivos.";
         return;
     }
 
@@ -990,49 +1516,237 @@ async function saveSelectedAttachments() {
         isDirty = true;
 
         if (!saveActiveAssessment(true)) {
-        attachmentMessage.textContent =
-            "No se pudo crear la ficha para asociar los archivos.";
-        return;
+            attachmentMessage.textContent =
+                "No se pudo crear la ficha para asociar los archivos.";
+            return;
         }
     }
 
     try {
         for (const file of files) {
-        await window.TasadorFileStore.save({
-            id: createId(),
-            assessmentId: activeId,
-            name: file.name,
-            type: file.type,
-            size: file.size,
-            createdAt: new Date().toISOString(),
-            blob: file,
-        });
+            await window.TasadorFileStore.save({
+                id: createId(),
+                assessmentId: activeId,
+                name: file.name,
+                type: file.type,
+                size: file.size,
+                createdAt: new Date().toISOString(),
+                blob: file,
+                serverSynced: false,
+            });
         }
+
+        const hasPendingSync =
+            !navigator.onLine ||
+            (await syncPendingAttachments()) > 0;
 
         attachmentInput.value = "";
         saveActiveAssessment(true);
         await renderAttachments();
 
-        attachmentMessage.textContent =
-        "Archivos guardados en este dispositivo.";
+        attachmentMessage.textContent = hasPendingSync
+            ? "Archivos guardados en este dispositivo; algunos quedan pendientes de sincronización."
+            : "Archivos guardados y sincronizados con el servidor.";
     } catch (error) {
+        console.error("Error al guardar o sincronizar los archivos:", error);
         attachmentMessage.textContent =
-        "No se pudieron guardar todos los archivos. Revisa el espacio disponible.";
+            "Hubo un error al procesar los archivos. Revisa la consola.";
         await renderAttachments();
     }
 }
+
+
+async function syncPendingAssessments() {
+    if (!navigator.onLine || syncingPendingAssessments) {
+        return;
+    }
+
+    syncingPendingAssessments = true;
+
+    try {
+        for (const id of getPendingSyncIds()) {
+            if (!navigator.onLine) {
+                break;
+            }
+
+            const assessment = assessments.find((item) => item.id === id);
+
+            if (!assessment) {
+                removePendingSyncId(id);
+                continue;
+            }
+
+            await syncAssessmentToServer(assessment);
+        }
+    } finally {
+        syncingPendingAssessments = false;
+    }
+}
+
+window.addEventListener("online", async () => {
+    await syncPendingAssessmentDeletions();
+
+    if (getPendingAssessmentDeletionIds().length === 0) {
+        await loadAssessmentsFromServer();
+        await syncPendingAssessments();
+    }
+});
+
+const PENDING_ATTACHMENT_DELETIONS_KEY =
+    "tasador.pendingAttachmentDeletions";
+
+let syncingPendingAttachmentDeletions = false;
+
+function getPendingAttachmentDeletions() {
+    try {
+        const items = JSON.parse(
+            localStorage.getItem(PENDING_ATTACHMENT_DELETIONS_KEY) || "[]"
+        );
+        return Array.isArray(items) ? items : [];
+    } catch {
+        return [];
+    }
+}
+
+function savePendingAttachmentDeletions(items) {
+    localStorage.setItem(
+        PENDING_ATTACHMENT_DELETIONS_KEY,
+        JSON.stringify(items)
+    );
+}
+
+function addPendingAttachmentDeletion(assessmentId, attachmentId) {
+    const items = getPendingAttachmentDeletions();
+
+    const alreadyQueued = items.some(
+        (item) =>
+            String(item.assessmentId) === String(assessmentId) &&
+            String(item.attachmentId) === String(attachmentId)
+    );
+
+    if (!alreadyQueued) {
+        items.push({ assessmentId, attachmentId });
+        savePendingAttachmentDeletions(items);
+    }
+}
+
+function removePendingAttachmentDeletion(assessmentId, attachmentId) {
+    const items = getPendingAttachmentDeletions().filter(
+        (item) =>
+            String(item.assessmentId) !== String(assessmentId) ||
+            String(item.attachmentId) !== String(attachmentId)
+    );
+
+    savePendingAttachmentDeletions(items);
+}
+
+async function deleteAttachmentFromServer(assessmentId, attachmentId) {
+    const response = await fetch(
+        `${API_BASE_URL}/assessments/${encodeURIComponent(
+            assessmentId
+        )}/attachments/${encodeURIComponent(attachmentId)}`,
+        { method: "DELETE" }
+    );
+
+    // Si ya no está en el servidor, la eliminación está cumplida.
+    if (response.ok || response.status === 404) {
+        return;
+    }
+
+    const result = await response.json().catch(() => ({}));
+    throw new Error(result.detail || `HTTP ${response.status}`);
+}
+
+async function syncPendingAttachmentDeletions() {
+    if (!navigator.onLine || syncingPendingAttachmentDeletions) {
+        return;
+    }
+
+    syncingPendingAttachmentDeletions = true;
+
+    try {
+        for (const item of getPendingAttachmentDeletions()) {
+            if (!navigator.onLine) {
+                break;
+            }
+
+            try {
+                await deleteAttachmentFromServer(
+                    item.assessmentId,
+                    item.attachmentId
+                );
+
+                removePendingAttachmentDeletion(
+                    item.assessmentId,
+                    item.attachmentId
+                );
+            } catch (error) {
+                console.error(
+                    "No se pudo sincronizar la eliminación del adjunto:",
+                    error
+                );
+                // Deja este elemento y los siguientes en cola para reintentar.
+                break;
+            }
+        }
+    } finally {
+        syncingPendingAttachmentDeletions = false;
+    }
+}
+
 
 async function removeAttachment(attachmentId) {
     try {
+        const attachments =
+            await window.TasadorFileStore.listByAssessment(activeId);
+
+        const attachment = attachments.find(
+            (item) => String(item.id) === String(attachmentId)
+        );
+
+        if (!attachment) return;
+
+        const assessmentId = attachment.assessmentId || activeId;
+
+        // Considera los adjuntos antiguos sin esta propiedad como posiblemente
+        // sincronizados, para evitar dejar una copia huérfana en el servidor.
+        const mayExistOnServer = attachment.serverSynced !== false;
+
+        if (mayExistOnServer) {
+            // Registrar primero la intención hace que la eliminación sobreviva
+            // al cierre de la pestaña o a una pérdida de conexión.
+            addPendingAttachmentDeletion(assessmentId, attachmentId);
+        }
+
         await window.TasadorFileStore.remove(attachmentId);
         await renderAttachments();
 
-        attachmentMessage.textContent = "Archivo eliminado.";
-        saveActiveAssessment(true);
+        if (mayExistOnServer && navigator.onLine) {
+            await syncPendingAttachmentDeletions();
+
+            const stillPending = getPendingAttachmentDeletions().some(
+                (item) =>
+                    String(item.assessmentId) === String(assessmentId) &&
+                    String(item.attachmentId) === String(attachmentId)
+            );
+
+            attachmentMessage.textContent = stillPending
+                ? "Archivo eliminado del dispositivo; se reintentará borrar del servidor."
+                : "Archivo eliminado del dispositivo y del servidor.";
+        } else if (mayExistOnServer) {
+            attachmentMessage.textContent =
+                "Archivo eliminado del dispositivo; su eliminación del servidor queda pendiente.";
+        } else {
+            // Nunca se había subido: basta con eliminarlo localmente.
+            attachmentMessage.textContent =
+                "Archivo pendiente eliminado del dispositivo.";
+        }
     } catch (error) {
+        console.error("No se pudo eliminar el archivo:", error);
         attachmentMessage.textContent = "No se pudo eliminar el archivo.";
     }
 }
+
 
 
 form.addEventListener("input", (event) => {
@@ -1075,4 +1789,12 @@ assessments = readAssessments();
 renderAssessments();
 renderComparables();
 startNewAssessment();
-loadAssessmentsFromServer();
+(async () => {
+    await syncPendingAssessmentDeletions();
+
+    if (getPendingAssessmentDeletionIds().length === 0) {
+        await loadAssessmentsFromServer();
+    }
+
+    await syncPendingAssessments();
+})();

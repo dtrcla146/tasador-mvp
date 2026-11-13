@@ -44,6 +44,8 @@
         return databasePromise;
     }
 
+    
+
     function save(attachment) {
         return openDatabase().then(
         (database) =>
@@ -63,7 +65,7 @@
             })
         );
     }
-
+    // los adjuntos se consultan en IndexedDB por assessmentId
     function listByAssessment(assessmentId) {
         return openDatabase().then(
         (database) =>
@@ -91,6 +93,29 @@
             })
         );
     }
+
+    function listAll() {
+    return openDatabase().then(
+        (database) =>
+            new Promise((resolve, reject) => {
+                const transaction = database.transaction(
+                    STORE_NAME,
+                    "readonly"
+                );
+                const request = transaction
+                    .objectStore(STORE_NAME)
+                    .getAll();
+
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () =>
+                    reject(
+                        request.error ||
+                        new Error("No se pudieron leer los archivos.")
+                    );
+            })
+    );
+    }
+
 
     function remove(attachmentId) {
         return openDatabase().then(
@@ -141,9 +166,10 @@
     }
 
     window.TasadorFileStore = {
-        save,
-        listByAssessment,
-        remove,
-        removeForAssessment,
-    };
+    save,
+    listByAssessment,
+    listAll,
+    remove,
+    removeForAssessment,
+};
 })();
