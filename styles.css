@@ -1,7 +1,7 @@
 :root {
-    font-family: Arial, sans-serif;
+    font-family: Inter, "Segoe UI", Arial, sans-serif;
     color: #17211b;
-    background: #f3f6f4;
+    background: #f4f7f5;
 }
 
 * {
@@ -13,8 +13,8 @@ body {
 }
 
 .container {
-    width: min(900px, calc(100% - 32px));
-    margin: 40px auto;
+    width: min(1180px, calc(100% - 32px));
+    margin: 32px auto;
 }
 
 .page-header {
@@ -58,6 +58,14 @@ input,select,textarea {
     border: 1px solid #aab8ae;
     border-radius: 6px;
     font: inherit;
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+button:focus-visible {
+    outline: 3px solid #78b994;
+    outline-offset: 2px;
 }
 
 textarea {
@@ -105,6 +113,8 @@ button:hover {
 .full-width {
         grid-column: auto;
 }
+}
+
 .portfolio-card {
     margin-bottom: 20px;
 }
@@ -172,6 +182,7 @@ button.danger {
         flex: 1;
     }
 }
+
 .comparable-section {
     margin-top: 28px;
     padding-top: 22px;
@@ -225,6 +236,11 @@ button.danger {
     margin: 48px auto;
 }
 
+.auth-card form {
+    display: grid;
+    gap: 16px;
+}
+
 .auth-actions {
     display: flex;
     flex-wrap: wrap;
@@ -232,7 +248,174 @@ button.danger {
     margin-top: 16px;
 }
 
+.auth-actions button,
+.settings-actions button {
+    margin: 0;
+}
+
+.main-navigation {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 20px 0 28px;
+    padding: 8px;
+    background: #e7eee9;
+    border-radius: 12px;
+}
+
+.main-navigation button {
+    margin: 0;
+    color: #254a34;
+    background: transparent;
+}
+
+.main-navigation button[aria-current="page"] {
+    color: white;
+    background: #28734b;
+}
+
+.app-view {
+    display: grid;
+    gap: 18px;
+}
+
+.app-view[hidden] {
+    display: none !important;
+}
+
+.kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
+    gap: 12px;
+}
+
+.kpi-card,
+.status-card {
+    display: grid;
+    gap: 8px;
+    min-height: 100px;
+    padding: 18px;
+    text-align: left;
+    background: #fff;
+    border: 1px solid #dce5df;
+    border-radius: 12px;
+    box-shadow: 0 4px 16px rgb(23 33 27 / 5%);
+}
+
+.kpi-card span,
+.status-card span {
+    color: #53645a;
+    font-size: 0.94rem;
+}
+
+.kpi-card strong,
+.status-card strong {
+    color: #205b3c;
+    font-size: 1.65rem;
+}
+
+.status-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 12px;
+}
+
+.status-card {
+    margin: 0;
+    color: inherit;
+    cursor: pointer;
+}
+
+.status-card:hover {
+    border-color: #28734b;
+}
+
+.status-group,
+.settings-card {
+    display: grid;
+    gap: 14px;
+}
+
+.status-group h3 {
+    margin-bottom: 0;
+}
+
+.assessment-groups {
+    display: grid;
+    gap: 22px;
+}
+
+.assessment-groups > .secondary {
+    justify-self: start;
+    margin: 0;
+}
+
+.plain-list {
+    display: grid;
+    gap: 8px;
+    padding-left: 20px;
+}
+
+.settings-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.settings-card .form-grid {
+    margin-block: 12px;
+}
+
+.settings-card input[type="range"] {
+    padding: 0;
+}
+
+[aria-current="page"] {
+    font-weight: 700;
+}
+
 [hidden] {
     display: none !important;
 }
+
+@media (max-width: 600px) {
+    .container {
+        width: min(100% - 20px, 1180px);
+        margin: 16px auto;
+    }
+
+    .main-navigation {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        margin: 12px 0 20px;
+    }
+
+    .main-navigation button {
+        padding: 10px 8px;
+        font-size: 0.92rem;
+    }
+
+    .kpi-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .kpi-card {
+        min-height: 90px;
+        padding: 14px;
+    }
+
+    .kpi-card strong {
+        font-size: 1.35rem;
+    }
+
+    .settings-actions {
+        display: grid;
+    }
+
+    .settings-actions button {
+        width: 100%;
+    }
 }

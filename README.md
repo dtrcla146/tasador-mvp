@@ -36,10 +36,14 @@ Abre <http://127.0.0.1:5500>. No abras `index.html` directamente como archivo: e
 
 ## Crear una cuenta y probar
 
-1. En la página, escribe un correo y una contraseña de al menos 12 caracteres y pulsa **Crear cuenta**.
+1. Pulsa **Crear cuenta** e introduce el correo, una contraseña de al menos 12 caracteres, el primer nombre y el primer apellido. Los segundos nombres y apellidos son opcionales.
 2. La aplicación inicia sesión automáticamente. En visitas posteriores, usa **Iniciar sesión**.
-3. Crea una tasación, guarda archivos y prueba listarlos, descargarlos y eliminarlos.
-4. Pulsa **Cerrar sesión** para volver al formulario de acceso.
-5. Para detener los servidores, pulsa `Ctrl+C` en cada ventana CMD.
+3. En **Resumen** puedes consultar el número de tasaciones por estado, las entregas y devoluciones, el cumplimiento de plazos, los motivos de eliminación y los importes cobrados o pendientes en UF.
+4. En **Tasaciones** puedes filtrar la cartera por estado. Usa **Nueva tasación** para crear o editar una ficha, añadir comparables y adjuntar documentos o fotos.
+5. En **Configuración** puedes definir la tarifa y el plazo predeterminados, elegir plazo por días o una fecha manual, ajustar la calidad de compresión de las fotos y consultar el promedio de UF del mes anterior. La consulta requiere conexión con mindicador.cl; también puedes introducir la UF manualmente.
+6. Pulsa **Cerrar sesión** para volver al formulario de acceso.
+7. Para detener los servidores, pulsa `Ctrl+C` en cada ventana CMD.
+
+Las imágenes compatibles se convierten a WebP en el navegador usando la calidad elegida; el original se conserva en el almacenamiento local del navegador. La aplicación sigue siendo local: no publiques el servidor ni abras sus puertos a Internet.
 
 Las rutas de tasaciones y adjuntos requieren sesión y solo devuelven registros de la cuenta autenticada. El frontend guarda las tasaciones, colas de sincronización y archivos locales separadas por cuenta. CORS permite el acceso desde el servidor local del frontend en el puerto 5500.

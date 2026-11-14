@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nueva tasación</title>
+    <title>Tasador MVP | Gestión de tasaciones</title>
     <link rel="stylesheet" href="styles.css">
     <script src="src/attachment-storage.js" defer></script>
     <script src="src/app.js" defer></script>
@@ -16,6 +16,24 @@
             <h1 id="auth-heading">Acceso a Tasador</h1>
             <p>Inicia sesión o crea una cuenta para gestionar tus tasaciones.</p>
             <form id="auth-form">
+                <div id="registration-fields" class="form-grid" hidden>
+                    <label>
+                        Primer nombre
+                        <input id="auth-first-name" autocomplete="given-name" maxlength="100">
+                    </label>
+                    <label>
+                        Segundo nombre (opcional)
+                        <input id="auth-middle-name" maxlength="100">
+                    </label>
+                    <label>
+                        Primer apellido
+                        <input id="auth-last-name" autocomplete="family-name" maxlength="100">
+                    </label>
+                    <label>
+                        Segundo apellido (opcional)
+                        <input id="auth-second-last-name" maxlength="100">
+                    </label>
+                </div>
                 <label>
                     Correo electrónico
                     <input id="auth-email" type="email" autocomplete="email" required>
@@ -33,9 +51,8 @@
                 </label>
                 <div class="auth-actions">
                     <button id="login-button" type="submit">Iniciar sesión</button>
-                    <button id="register-button" class="secondary" type="button">
-                        Crear cuenta
-                    </button>
+                    <button id="register-button" class="secondary" type="button">Crear cuenta</button>
+                    <button id="show-login-button" class="secondary" type="button" hidden>Ya tengo cuenta</button>
                 </div>
                 <p id="auth-message" class="message" role="status" aria-live="polite"></p>
             </form>
@@ -43,26 +60,48 @@
 
         <div id="app-content" hidden>
         <header class="page-header">
-            <p class="eyebrow">Tasador · Prototipo</p>
+            <p class="eyebrow">Tasador · versión 1.1</p>
             <h1 id="page-title">Tasaciones</h1>
-            <p>Registra los antecedentes iniciales de la propiedad.</p>
+            <p>Organiza tasaciones, plazos, tarifas y antecedentes de propiedades.</p>
             <p>
-                Sesión: <strong id="current-user-email"></strong>
+                <span id="current-user-name"></span> · <strong id="current-user-email"></strong>
                 <button id="logout-button" class="secondary" type="button">Cerrar sesión</button>
             </p>
         </header>
 
+        <nav id="main-navigation" class="main-navigation" aria-label="Navegación principal">
+            <button type="button" data-view="dashboard-view" aria-current="page">Resumen</button>
+            <button type="button" data-view="assessments-view">Tasaciones</button>
+            <button type="button" data-view="editor-view">Nueva tasación</button>
+            <button type="button" data-view="comparables-view">Comparables</button>
+            <button type="button" data-view="settings-view">Configuración</button>
+        </nav>
+
+        <section id="dashboard-view" class="app-view" aria-labelledby="dashboard-heading">
+            <h2 id="dashboard-heading">Resumen de trabajo</h2>
+            <div id="dashboard-kpis" class="kpi-grid"></div>
+            <h3>Tasaciones por estado</h3>
+            <div id="status-cards" class="status-grid"></div>
+            <section class="card" aria-labelledby="deleted-heading">
+                <h3 id="deleted-heading">Eliminaciones por motivo</h3>
+                <ul id="deleted-reasons" class="plain-list"></ul>
+            </section>
+            <p id="dashboard-message" class="message" role="status" aria-live="polite"></p>
+        </section>
+
+        <section id="assessments-view" class="app-view" aria-labelledby="portfolio-heading" hidden>
         <section class="card portfolio-card" aria-labelledby="portfolio-heading">
             <div class="section-heading">
                 <h2 id="portfolio-heading">Cartera de tasaciones</h2>
-                <button id="new-assessment" type="button">Nueva tasación</button>
+                <button id="new-assessment" type="button">Crear tasación</button>
             </div>
 
-            <ul id="assessment-list" class="assessment-list"></ul>
+            <div id="assessment-list" class="assessment-groups"></div>
             <p id="portfolio-message" class="message" role="status" aria-live="polite"></p>
         </section>
+        </section>
 
-
+        <section id="editor-view" class="app-view" aria-labelledby="editor-title" hidden>
         <form id="inspection-form">
             <section class="card" aria-labelledby="property-heading">
                 <h2 id="editor-title">Ficha de inspección</h2>
@@ -75,6 +114,32 @@
                         <option value="inspeccion">Inspección</option>
                         <option value="revision">En revisión</option>
                         <option value="entregada">Entregada</option>
+                    </select>
+                </label>
+                <label>
+                    Plazo de entrega
+                    <select name="deadlineMode" id="deadline-mode">
+                        <option value="days">Días desde la creación</option>
+                        <option value="manual">Fecha límite manual</option>
+                    </select>
+                </label>
+                <label id="deadline-days-field">
+                    Días para entregar
+                    <input name="deadlineDays" type="number" min="1" max="365" step="1" value="10">
+                </label>
+                <label id="due-date-field" hidden>
+                    Fecha límite
+                    <input name="dueDate" type="date">
+                </label>
+                <label>
+                    Tarifa por tasación (UF)
+                    <input name="feeUf" type="number" min="0" step="0.01" value="0">
+                </label>
+                <label>
+                    Estado del cobro
+                    <select name="paymentStatus">
+                        <option value="pending">Pendiente de cobro</option>
+                        <option value="paid">Pagada</option>
                     </select>
                 </label>
 
@@ -148,7 +213,7 @@
                 </label>
             </div>
 
-            <section class="comparable-section" aria-labelledby="comparables-heading">
+            <section id="comparable-section" class="comparable-section card" aria-labelledby="comparables-heading">
                 <h3 id="comparables-heading">Estudio de comparables</h3>
                 <p class="helper-text">
                     Registra referencias y verifica sus datos antes de usarlas en el análisis.
@@ -256,6 +321,10 @@
 
             <section class="attachment-section" aria-labelledby="attachments-heading">
                 <h3 id="attachments-heading">Fotos y documentos</h3>
+                <p class="helper-text">
+                    Las imágenes se comprimen al sincronizarse; el original se conserva en este dispositivo.
+                    Ajusta la calidad en Configuración.
+                </p>
 
                 <label for="attachment-input">
                     Selecciona archivos para esta tasación
@@ -286,6 +355,53 @@
                 <p id="form-message" class="message" role="status" aria-live="polite"></p>
             </section>
         </form>
+        </section>
+
+        <section id="comparables-view" class="app-view" aria-labelledby="comparables-page-heading" hidden>
+            <h2 id="comparables-page-heading">Comparables</h2>
+            <p>Los comparables se guardan dentro de cada tasación. Abre o crea una tasación para gestionarlos.</p>
+            <div id="comparables-page-content"></div>
+        </section>
+
+        <section id="settings-view" class="app-view" aria-labelledby="settings-heading" hidden>
+            <section class="card settings-card">
+                <h2 id="settings-heading">Configuración del trabajo</h2>
+                <p id="uf-value-label" class="helper-text">
+                    El valor de UF del mes anterior aparecerá aquí cuando se consulte la fuente.
+                </p>
+                <div class="form-grid">
+                    <label>
+                        Valor UF manual (CLP)
+                        <input id="manual-uf-value" type="number" min="1" step="0.01">
+                    </label>
+                    <label>
+                        Tarifa predeterminada por tasación (UF)
+                        <input id="default-fee-uf" type="number" min="0" step="0.01">
+                    </label>
+                    <label>
+                        Plazo predeterminado
+                        <select id="default-deadline-mode">
+                            <option value="days">Días desde la creación</option>
+                            <option value="manual">Fecha límite manual</option>
+                        </select>
+                    </label>
+                    <label>
+                        Días predeterminados
+                        <input id="default-deadline-days" type="number" min="1" max="365">
+                    </label>
+                    <label class="full-width">
+                        Calidad de imagen al sincronizar:
+                        <output id="image-quality-output">65%</output>
+                        <input id="image-quality" type="range" min="0.1" max="0.95" step="0.05">
+                    </label>
+                </div>
+                <div class="settings-actions">
+                    <button id="refresh-uf-button" class="secondary" type="button">Consultar promedio del mes anterior</button>
+                    <button id="save-settings-button" type="button">Guardar configuración</button>
+                </div>
+                <p id="settings-message" class="message" role="status" aria-live="polite"></p>
+            </section>
+        </section>
         </div>
     </main>
 </body>

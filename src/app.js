@@ -31,14 +31,49 @@ const authPanel = document.querySelector("#auth-panel");
 const authForm = document.querySelector("#auth-form");
 const authEmailInput = document.querySelector("#auth-email");
 const authPasswordInput = document.querySelector("#auth-password");
+const registrationFields = document.querySelector("#registration-fields");
+const firstNameInput = document.querySelector("#auth-first-name");
+const middleNameInput = document.querySelector("#auth-middle-name");
+const lastNameInput = document.querySelector("#auth-last-name");
+const secondLastNameInput = document.querySelector("#auth-second-last-name");
+const loginButton = document.querySelector("#login-button");
+const registerButton = document.querySelector("#register-button");
+const showLoginButton = document.querySelector("#show-login-button");
 const authMessage = document.querySelector("#auth-message");
 const appContent = document.querySelector("#app-content");
 const currentUserEmail = document.querySelector("#current-user-email");
+const currentUserName = document.querySelector("#current-user-name");
 const logoutButton = document.querySelector("#logout-button");
+const dashboardView = document.querySelector("#dashboard-view");
+const statusCards = document.querySelector("#status-cards");
+const dashboardKpis = document.querySelector("#dashboard-kpis");
+const deletedReasonsList = document.querySelector("#deleted-reasons");
+const dashboardMessage = document.querySelector("#dashboard-message");
+const comparableSection = document.querySelector("#comparable-section");
+const comparablesPageContent = document.querySelector("#comparables-page-content");
+const settingsMessage = document.querySelector("#settings-message");
+const manualUfInput = document.querySelector("#manual-uf-value");
+const defaultFeeInput = document.querySelector("#default-fee-uf");
+const defaultDeadlineModeInput = document.querySelector("#default-deadline-mode");
+const defaultDeadlineDaysInput = document.querySelector("#default-deadline-days");
+const imageQualityInput = document.querySelector("#image-quality");
+const imageQualityOutput = document.querySelector("#image-quality-output");
+const ufValueLabel = document.querySelector("#uf-value-label");
 
 const TOKEN_KEY = "tasadorMvp.accessToken";
 const USER_KEY = "tasadorMvp.currentUser";
 let currentUser = null;
+let registrationMode = false;
+let dashboardStats = null;
+let assessmentFilter = null;
+let userSettings = {
+    manualUfValue: null,
+    defaultFeeUf: 0,
+    deadlineMode: "days",
+    defaultDeadlineDays: 10,
+    imageQuality: 0.65,
+};
+let ufValueInfo = null;
 
 function getAccessToken() {
     return localStorage.getItem(TOKEN_KEY);
@@ -140,7 +175,14 @@ async function submitAuthentication(register = false) {
             const response = await fetch(`${API_BASE_URL}/auth/register`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ email, password }),
+                body: JSON.stringify({
+                    email,
+                    password,
+                    firstName: firstNameInput.value.trim(),
+                    middleName: middleNameInput.value.trim(),
+                    lastName: lastNameInput.value.trim(),
+                    secondLastName: secondLastNameInput.value.trim(),
+                }),
             });
             const result = await response.json().catch(() => ({}));
 
@@ -159,9 +201,14 @@ async function startAuthenticatedApp() {
     authPanel.hidden = true;
     appContent.hidden = false;
     currentUserEmail.textContent = currentUser.email;
+    currentUserName.textContent =
+        [currentUser.firstName, currentUser.middleName, currentUser.lastName, currentUser.secondLastName]
+            .filter(Boolean)
+            .join(" ");
     migrateLegacyQueue(PENDING_ASSESSMENT_DELETIONS_KEY);
     migrateLegacyQueue(PENDING_SYNC_KEY);
     migrateLegacyQueue(PENDING_ATTACHMENT_DELETIONS_KEY);
+    migrateLegacyQueue(PENDING_ASSESSMENT_DELETION_REASONS_KEY);
 
     try {
         if (!localStorage.getItem("tasadorMvp.legacyFilesClaimed")) {
@@ -178,12 +225,295 @@ async function startAuthenticatedApp() {
     renderAssessments();
     renderComparables();
     startNewAssessment();
+    await loadUserSettings();
     await syncPendingAssessmentDeletions();
 
     if (getPendingAssessmentDeletionIds().length === 0) {
         await loadAssessmentsFromServer();
     }
     await syncPendingAssessments();
+    await refreshDashboard();
+    pageTitle.textContent = "Resumen";
+}
+
+function setActiveView(viewId) {
+    document.querySelectorAll(".app-view").forEach((view) => {
+        view.hidden = view.id !== viewId;
+    });
+    document.querySelectorAll("#main-navigation [data-view]").forEach((button) => {
+        if (button.dataset.view === viewId) {
+            button.setAttribute("aria-current", "page");
+        } else {
+            button.removeAttribute("aria-current");
+        }
+    });
+    const viewTitles = {
+        "dashboard-view": "Resumen",
+        "assessments-view": "Tasaciones",
+        "comparables-view": "Comparables",
+        "settings-view": "Configuración",
+    };
+    if (viewId !== "editor-view") {
+        pageTitle.textContent = viewTitles[viewId] || "Tasador";
+    }
+
+    if (viewId === "dashboard-view") {
+        refreshDashboard();
+    }
+}
+
+function renderDashboard() {
+    if (!dashboardStats) return;
+
+    const metrics = [
+        ["Tasaciones creadas", dashboardStats.createdCount],
+        ["Activas", Object.values(dashboardStats.statusCounts).reduce((sum, count) => sum + count, 0)],
+        ["Entregas", dashboardStats.deliveredCount],
+        ["Devueltas a revisión", dashboardStats.returnedCount],
+        ["Entregadas dentro del plazo", dashboardStats.deliveredOnTimeCount],
+        ["Entregadas fuera del plazo", dashboardStats.deliveredLateCount],
+        ["Sin plazo definido", dashboardStats.deliveredWithoutDeadlineCount],
+        ["Eliminadas", dashboardStats.deletedCount],
+        ["Por cobrar", `${dashboardStats.pendingFeeUf.toFixed(2)} UF`],
+        ["Cobrado", `${dashboardStats.paidFeeUf.toFixed(2)} UF`],
+    ];
+    dashboardKpis.replaceChildren();
+    for (const [label, value] of metrics) {
+        const card = document.createElement("article");
+        card.className = "kpi-card";
+        const caption = document.createElement("span");
+        caption.textContent = label;
+        const amount = document.createElement("strong");
+        amount.textContent = String(value);
+        card.append(caption, amount);
+        dashboardKpis.append(card);
+    }
+
+    statusCards.replaceChildren();
+    for (const [status, label] of Object.entries(statusLabels)) {
+        const card = document.createElement("button");
+        card.type = "button";
+        card.className = "status-card";
+        const count = document.createElement("strong");
+        count.textContent = String(dashboardStats.statusCounts[status] || 0);
+        const caption = document.createElement("span");
+        caption.textContent = label;
+        card.append(count, caption);
+        card.addEventListener("click", () => {
+            assessmentFilter = status;
+            renderAssessments();
+            setActiveView("assessments-view");
+        });
+        statusCards.append(card);
+    }
+
+    deletedReasonsList.replaceChildren();
+    const reasons = Object.entries(dashboardStats.deletedReasons || {});
+    if (!reasons.length) {
+        const item = document.createElement("li");
+        item.textContent = "Todavía no hay tasaciones eliminadas.";
+        deletedReasonsList.append(item);
+    } else {
+        for (const [reason, count] of reasons) {
+            const item = document.createElement("li");
+            item.textContent = `${reason}: ${count}`;
+            deletedReasonsList.append(item);
+        }
+    }
+}
+
+async function refreshDashboard() {
+    if (!getAccessToken()) return;
+
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/dashboard/stats`);
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(result.detail || `Error HTTP ${response.status}`);
+        }
+        dashboardStats = result;
+        renderDashboard();
+        dashboardMessage.textContent = "";
+    } catch (error) {
+        dashboardMessage.textContent =
+            `No se pudieron cargar las estadísticas: ${error.message}`;
+    }
+}
+
+function applySettingsToForm() {
+    const deadlineMode = form.elements.namedItem("deadlineMode");
+    const deadlineDays = form.elements.namedItem("deadlineDays");
+    const fee = form.elements.namedItem("feeUf");
+    if (deadlineMode) deadlineMode.value = userSettings.deadlineMode;
+    if (deadlineDays) deadlineDays.value = String(userSettings.defaultDeadlineDays);
+    if (fee) fee.value = String(userSettings.defaultFeeUf);
+    updateDeadlineFields();
+}
+
+function updateDeadlineFields() {
+    const isManual = form.elements.namedItem("deadlineMode").value === "manual";
+    document.querySelector("#deadline-days-field").hidden = isManual;
+    document.querySelector("#due-date-field").hidden = !isManual;
+    form.elements.namedItem("dueDate").required = isManual;
+}
+
+function populateSettingsForm() {
+    manualUfInput.value = userSettings.manualUfValue ?? "";
+    defaultFeeInput.value = String(userSettings.defaultFeeUf);
+    defaultDeadlineModeInput.value = userSettings.deadlineMode;
+    defaultDeadlineDaysInput.value = String(userSettings.defaultDeadlineDays);
+    imageQualityInput.value = String(userSettings.imageQuality);
+    imageQualityOutput.value = `${Math.round(userSettings.imageQuality * 100)}%`;
+    defaultDeadlineDaysInput.disabled = userSettings.deadlineMode === "manual";
+}
+
+async function loadUserSettings() {
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/settings`);
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(result.detail || `Error HTTP ${response.status}`);
+        }
+        userSettings = result;
+        populateSettingsForm();
+        applySettingsToForm();
+        if (userSettings.manualUfValue) {
+            ufValueInfo = {
+                average: userSettings.manualUfValue,
+                month: "valor manual",
+                source: "ingresado manualmente",
+            };
+            updateUfLabel();
+        } else {
+            refreshUfAverage();
+        }
+    } catch (error) {
+        settingsMessage.textContent =
+            `No se pudo cargar la configuración: ${error.message}`;
+    }
+}
+
+function updateUfLabel() {
+    if (!ufValueInfo) {
+        ufValueLabel.textContent =
+            "No hay un valor UF disponible; puedes ingresarlo manualmente.";
+        return;
+    }
+    const formatted = new Intl.NumberFormat("es-CL", {
+        style: "currency",
+        currency: "CLP",
+        maximumFractionDigits: 2,
+    }).format(ufValueInfo.average);
+    ufValueLabel.textContent =
+        ufValueInfo.source === "mindicador.cl"
+            ? `Promedio UF de ${ufValueInfo.month}: ${formatted} (${ufValueInfo.daysIncluded} valores diarios; fuente: mindicador.cl). Puedes modificarlo manualmente.`
+            : `UF ${ufValueInfo.month}: ${formatted}. Fuente: ${ufValueInfo.source}.`;
+}
+
+async function refreshUfAverage() {
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/settings/uf-average`);
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(result.detail || `Error HTTP ${response.status}`);
+        }
+        ufValueInfo = result;
+        userSettings.manualUfValue = null;
+        manualUfInput.value = "";
+        updateUfLabel();
+        settingsMessage.textContent =
+            "Promedio mensual consultado. Guarda la configuración si también quieres conservar la tarifa predeterminada.";
+    } catch (error) {
+        settingsMessage.textContent =
+            `${error.message} Puedes escribir el valor UF manualmente.`;
+        ufValueLabel.textContent =
+            "No se pudo consultar el promedio del mes anterior. Indica un valor manual para calcular montos en pesos.";
+    }
+}
+
+async function saveUserSettings() {
+    const manualValue = manualUfInput.value.trim();
+    const settings = {
+        manualUfValue: manualValue ? Number(manualValue) : null,
+        defaultFeeUf: Number(defaultFeeInput.value || 0),
+        deadlineMode: defaultDeadlineModeInput.value,
+        defaultDeadlineDays: Number(defaultDeadlineDaysInput.value || 10),
+        imageQuality: Number(imageQualityInput.value),
+    };
+
+    try {
+        const response = await apiFetch(`${API_BASE_URL}/settings`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(settings),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(result.detail || `Error HTTP ${response.status}`);
+        }
+        userSettings = result;
+        populateSettingsForm();
+        applySettingsToForm();
+        if (userSettings.manualUfValue) {
+            ufValueInfo = {
+                average: userSettings.manualUfValue,
+                month: "valor manual",
+                source: "ingresado manualmente",
+            };
+            updateUfLabel();
+        } else if (ufValueInfo?.source !== "mindicador.cl") {
+            await refreshUfAverage();
+        }
+        settingsMessage.textContent = "Configuración guardada.";
+        await refreshDashboard();
+    } catch (error) {
+        settingsMessage.textContent =
+            `No se pudo guardar la configuración: ${error.message}`;
+    }
+}
+
+async function compressImageForUpload(file) {
+    if (
+        !["image/jpeg", "image/png", "image/webp"].includes(file.type) ||
+        !("createImageBitmap" in window)
+    ) {
+        return { blob: file, name: file.name };
+    }
+
+    let image;
+    try {
+        image = await createImageBitmap(file);
+    } catch (error) {
+        console.warn("El navegador no pudo decodificar la imagen; se conservará original:", error);
+        return { blob: file, name: file.name };
+    }
+    const scale = Math.min(1, 2048 / Math.max(image.width, image.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(image.width * scale));
+    canvas.height = Math.max(1, Math.round(image.height * scale));
+    const context = canvas.getContext("2d");
+    if (!context) {
+        image.close();
+        throw new Error("No se pudo preparar el compresor de imágenes.");
+    }
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    image.close();
+
+    const compressed = await new Promise((resolve, reject) => {
+        canvas.toBlob(
+            (blob) => blob
+                ? resolve(blob)
+                : reject(new Error("El navegador no pudo comprimir esta imagen.")),
+            "image/webp",
+            userSettings.imageQuality
+        );
+    });
+
+    if (compressed.size >= file.size) {
+        return { blob: file, name: file.name };
+    }
+    const baseName = file.name.replace(/\.[^.]+$/, "");
+    return { blob: compressed, name: `${baseName}.webp` };
 }
 
 
@@ -308,7 +638,8 @@ function getPendingAssessmentDeletionIds() {
             getUserItem(PENDING_ASSESSMENT_DELETIONS_KEY) || "[]"
         );
         return Array.isArray(ids) ? ids.map(String) : [];
-    } catch {
+    } catch (error) {
+        console.error("No se pudieron leer las tasaciones pendientes de eliminar:", error);
         return [];
     }
 }
@@ -320,11 +651,21 @@ function savePendingAssessmentDeletionIds(ids) {
     );
 }
 
-function addPendingAssessmentDeletion(id) {
+function addPendingAssessmentDeletion(id, reason) {
     savePendingAssessmentDeletionIds([
         ...getPendingAssessmentDeletionIds(),
         String(id),
     ]);
+    let reasons = {};
+    try {
+        reasons = JSON.parse(
+            getUserItem(PENDING_ASSESSMENT_DELETION_REASONS_KEY) || "{}"
+        );
+    } catch (error) {
+        console.error("No se pudieron leer los motivos de borrado pendientes:", error);
+    }
+    reasons[String(id)] = reason;
+    setUserItem(PENDING_ASSESSMENT_DELETION_REASONS_KEY, JSON.stringify(reasons));
 }
 
 function removePendingAssessmentDeletion(id) {
@@ -333,6 +674,34 @@ function removePendingAssessmentDeletion(id) {
             (pendingId) => pendingId !== String(id)
         )
     );
+    const reasons = getUserItem(PENDING_ASSESSMENT_DELETION_REASONS_KEY);
+    if (reasons) {
+        try {
+            const parsed = JSON.parse(reasons);
+            delete parsed[String(id)];
+            setUserItem(
+                PENDING_ASSESSMENT_DELETION_REASONS_KEY,
+                JSON.stringify(parsed)
+            );
+        } catch (error) {
+            console.error("No se pudo actualizar el motivo de borrado pendiente:", error);
+        }
+    }
+}
+
+const PENDING_ASSESSMENT_DELETION_REASONS_KEY =
+    "tasador.pendingAssessmentDeletionReasons";
+
+function getPendingAssessmentDeletionReason(id) {
+    try {
+        const reasons = JSON.parse(
+            getUserItem(PENDING_ASSESSMENT_DELETION_REASONS_KEY) || "{}"
+        );
+        return reasons[String(id)] || "Sin motivo especificado";
+    } catch (error) {
+        console.error("No se pudo leer el motivo de borrado pendiente:", error);
+        return "Sin motivo especificado";
+    }
 }
 
 async function syncPendingAssessmentDeletions() {
@@ -346,7 +715,8 @@ async function syncPendingAssessmentDeletions() {
 
             try {
                 const response = await apiFetch(
-                    `${API_BASE_URL}/assessments/${encodeURIComponent(id)}`,
+                    `${API_BASE_URL}/assessments/${encodeURIComponent(id)}` +
+                    `?reason=${encodeURIComponent(getPendingAssessmentDeletionReason(id))}`,
                     { method: "DELETE" }
                 );
 
@@ -463,61 +833,85 @@ function formatCurrency(amount) {
 function renderAssessments() {
     assessmentList.replaceChildren();
 
-    if (assessments.length === 0) {
+    const visibleAssessments = assessmentFilter
+        ? assessments.filter(
+            (assessment) => assessment.data.status === assessmentFilter
+        )
+        : assessments;
+
+    if (assessmentFilter) {
+        const clearFilter = document.createElement("button");
+        clearFilter.type = "button";
+        clearFilter.className = "secondary";
+        clearFilter.textContent = "Ver todos los estados";
+        clearFilter.addEventListener("click", () => {
+            assessmentFilter = null;
+            renderAssessments();
+        });
+        assessmentList.append(clearFilter);
+    }
+
+    if (visibleAssessments.length === 0) {
         const emptyItem = document.createElement("li");
         emptyItem.className = "empty-state";
-        emptyItem.textContent = "Todavía no hay tasaciones guardadas.";
+        emptyItem.textContent = assessmentFilter
+            ? `No hay tasaciones en estado "${statusLabels[assessmentFilter]}".`
+            : "Todavía no hay tasaciones guardadas.";
         assessmentList.append(emptyItem);
         return;
     }
 
-    for (const assessment of assessments) {
-        const item = document.createElement("li");
-        item.className = "assessment-card";
+    const statuses = assessmentFilter
+        ? [assessmentFilter]
+        : Object.keys(statusLabels);
+    for (const statusKey of statuses) {
+        const groupAssessments = visibleAssessments
+            .filter((assessment) => (assessment.data.status || "pendiente") === statusKey)
+            .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
+        if (!groupAssessments.length) continue;
 
-        const details = document.createElement("div");
-        const title = document.createElement("h3");
-        const location = document.createElement("p");
-        const status = document.createElement("p");
+        const group = document.createElement("section");
+        group.className = "status-group";
+        const heading = document.createElement("h3");
+        heading.textContent = `${statusLabels[statusKey]} · ${groupAssessments.length}`;
+        const list = document.createElement("ul");
+        list.className = "assessment-list";
 
-        title.textContent =
-        assessment.data.address?.trim() || "Tasación sin dirección";
+        for (const assessment of groupAssessments) {
+            const item = document.createElement("li");
+            item.className = "assessment-card";
+            const details = document.createElement("div");
+            const title = document.createElement("h4");
+            const location = document.createElement("p");
+            const updateTime = document.createElement("p");
+            title.textContent =
+                assessment.data.address?.trim() || "Tasación sin dirección";
+            location.textContent =
+                [assessment.data.commune, assessment.data.region]
+                    .filter(Boolean)
+                    .join(", ") || "Ubicación pendiente";
+            updateTime.textContent = `Actualizada ${formatDate(assessment.updatedAt)}`;
+            details.append(title, location, updateTime);
 
-        location.textContent =
-        [assessment.data.commune, assessment.data.region]
-            .filter(Boolean)
-            .join(", ") || "Ubicación pendiente";
+            const actions = document.createElement("div");
+            actions.className = "assessment-actions";
+            const openButton = document.createElement("button");
+            openButton.type = "button";
+            openButton.className = "secondary";
+            openButton.textContent = "Abrir";
+            openButton.addEventListener("click", () => openAssessment(assessment.id));
+            const deleteButton = document.createElement("button");
+            deleteButton.type = "button";
+            deleteButton.className = "danger";
+            deleteButton.textContent = "Eliminar";
+            deleteButton.addEventListener("click", () => deleteAssessment(assessment.id));
+            actions.append(openButton, deleteButton);
+            item.append(details, actions);
+            list.append(item);
+        }
 
-        const statusText =
-        statusLabels[assessment.data.status] || "Estado sin definir";
-
-        status.textContent =
-        `${statusText} · Actualizada ${formatDate(assessment.updatedAt)}`;
-
-        details.append(title, location, status);
-
-        const actions = document.createElement("div");
-        actions.className = "assessment-actions";
-
-        const openButton = document.createElement("button");
-        openButton.type = "button";
-        openButton.className = "secondary";
-        openButton.textContent = "Abrir";
-        openButton.addEventListener("click", () => {
-        openAssessment(assessment.id);
-        });
-
-        const deleteButton = document.createElement("button");
-        deleteButton.type = "button";
-        deleteButton.className = "danger";
-        deleteButton.textContent = "Eliminar";
-        deleteButton.addEventListener("click", () => {
-        deleteAssessment(assessment.id);
-        });
-
-        actions.append(openButton, deleteButton);
-        item.append(details, actions);
-        assessmentList.append(item);
+        group.append(heading, list);
+        assessmentList.append(group);
     }
 }
 
@@ -618,12 +1012,19 @@ function saveActiveAssessment(forceSave = false) {
     );
 
     const now = new Date().toISOString();
+    const data = getFormData();
+    const rate = userSettings.manualUfValue || ufValueInfo?.average || null;
+    data.feeUf = String(Number(data.feeUf || userSettings.defaultFeeUf || 0));
+    if (rate) {
+        data.ufRateClp = String(rate);
+        data.ufRatePeriod = ufValueInfo?.month || "valor manual";
+    }
 
     const assessment = {
         id: activeId || createId(),
         createdAt: existing?.createdAt || now,
         updatedAt: now,
-        data: getFormData(),
+        data,
         comparables: comparableRecords,
         version: existing?.version ?? 0,
     };
@@ -841,6 +1242,7 @@ function startNewAssessment() {
     isDirty = false;
     form.reset();
     clearComparableEditor();
+    applySettingsToForm();
     renderComparables();
     renderAttachments();
 
@@ -850,7 +1252,6 @@ function startNewAssessment() {
 }
 // ...código que carga la tasación y sus datos...
 function openAssessment(id) {
-    console.trace("openAssessment", id)//DEGBUG
     flushPendingSave();
 
     const assessment = assessments.find((item) => item.id === id);
@@ -875,6 +1276,7 @@ function openAssessment(id) {
     clearComparableEditor();
     renderComparables();
     renderAttachments();
+    setActiveView("editor-view");
 
     pageTitle.textContent = "Editar tasación";
     message.textContent =
@@ -897,7 +1299,16 @@ async function deleteAssessment(id) {
 
     if (!confirmed) return;
 
-    addPendingAssessmentDeletion(id);
+    const reason = window.prompt(
+        "Indica el motivo de eliminación (obligatorio):"
+    )?.trim();
+    if (!reason) {
+        portfolioMessage.textContent =
+            "No se eliminó la tasación: debes indicar un motivo.";
+        return;
+    }
+
+    addPendingAssessmentDeletion(id, reason);
 
     const nextAssessments = assessments.filter(
         (item) => String(item.id) !== String(id)
@@ -932,7 +1343,9 @@ async function deleteAssessment(id) {
 
     if (String(activeId) === String(id)) {
         startNewAssessment();
+        setActiveView("assessments-view");
     }
+    await refreshDashboard();
 }
 
 
@@ -1217,6 +1630,7 @@ async function syncAssessmentToServer(assessment) {
         removePendingSyncId(assessment.id);
         message.textContent =
             "Tasación guardada localmente y enviada al servidor.";
+        await refreshDashboard();
         return true;
     } catch (error) {
         message.textContent =
@@ -1611,10 +2025,11 @@ async function syncPendingAttachments() {
         try {
             const formData = new FormData();
             formData.append("attachment_id", attachment.id);
+            const uploadFile = await compressImageForUpload(attachment.blob);
             formData.append(
                 "file",
-                attachment.blob,
-                attachment.name || "archivo"
+                uploadFile.blob,
+                uploadFile.name || "archivo"
             );
 
             const response = await apiFetch(
@@ -1931,7 +2346,11 @@ form.addEventListener("submit", (event) => {
     });
 
 addComparableButton.addEventListener("click", addOrUpdateComparable);
-newAssessmentButton.addEventListener("click", startNewAssessment);
+newAssessmentButton.addEventListener("click", () => {
+    assessmentFilter = null;
+    startNewAssessment();
+    setActiveView("editor-view");
+});
 
 
 saveAttachmentsButton.addEventListener("click", saveSelectedAttachments);
@@ -1943,15 +2362,62 @@ form.elements.namedItem("builtArea").addEventListener("input", renderReferenceRa
 
 form.elements.namedItem("landArea").addEventListener("input", renderReferenceRange);
 
-authForm.addEventListener("submit", (event) => {
-    event.preventDefault();
-    submitAuthentication(false);
+form.elements.namedItem("deadlineMode").addEventListener("change", updateDeadlineFields);
+document.querySelector("#default-deadline-mode").addEventListener("change", () => {
+    document.querySelector("#default-deadline-days").disabled =
+        document.querySelector("#default-deadline-mode").value === "manual";
+});
+imageQualityInput.addEventListener("input", () => {
+    imageQualityOutput.value = `${Math.round(Number(imageQualityInput.value) * 100)}%`;
+});
+document.querySelector("#refresh-uf-button").addEventListener("click", refreshUfAverage);
+document.querySelector("#save-settings-button").addEventListener("click", saveUserSettings);
+document.querySelectorAll("#main-navigation [data-view]").forEach((button) => {
+    button.addEventListener("click", () => {
+        assessmentFilter = null;
+        if (button.dataset.view === "editor-view" && !activeId) {
+            startNewAssessment();
+        }
+        setActiveView(button.dataset.view);
+    });
 });
 
-document.querySelector("#register-button").addEventListener("click", () => {
+comparablesPageContent.append(comparableSection);
+
+authForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    submitAuthentication(registrationMode);
+});
+
+registerButton.addEventListener("click", () => {
+    if (!registrationMode) {
+        registrationMode = true;
+        registrationFields.hidden = false;
+        firstNameInput.required = true;
+        lastNameInput.required = true;
+        loginButton.hidden = true;
+        showLoginButton.hidden = false;
+        registerButton.textContent = "Registrar cuenta";
+        authPasswordInput.autocomplete = "new-password";
+        firstNameInput.focus();
+        return;
+    }
+
     if (authForm.reportValidity()) {
         submitAuthentication(true);
     }
+});
+
+showLoginButton.addEventListener("click", () => {
+    registrationMode = false;
+    registrationFields.hidden = true;
+    firstNameInput.required = false;
+    lastNameInput.required = false;
+    loginButton.hidden = false;
+    showLoginButton.hidden = true;
+    registerButton.textContent = "Crear cuenta";
+    authPasswordInput.autocomplete = "current-password";
+    authMessage.textContent = "";
 });
 
 logoutButton.addEventListener("click", () => {
