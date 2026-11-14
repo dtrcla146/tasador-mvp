@@ -1,0 +1,238 @@
+:root {
+    font-family: Arial, sans-serif;
+    color: #17211b;
+    background: #f3f6f4;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+}
+
+.container {
+    width: min(900px, calc(100% - 32px));
+    margin: 40px auto;
+}
+
+.page-header {
+    margin-bottom: 24px;
+}
+
+.eyebrow {
+    color: #28734b;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+h1,h2 {
+    margin-top: 0;
+}
+
+.card {
+    padding: 24px;
+    background: white;
+    border: 1px solid #dce5df;
+    border-radius: 12px;
+    box-shadow: 0 4px 16px rgb(23 33 27 / 6%);
+}
+
+.form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+}
+
+label {
+    display: grid;
+    gap: 7px;
+    font-weight: 600;
+}
+
+input,select,textarea {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #aab8ae;
+    border-radius: 6px;
+    font: inherit;
+}
+
+textarea {
+    resize: vertical;
+}
+
+.full-width {
+    grid-column: 1 / -1;
+}
+
+button {
+    margin-top: 20px;
+    margin-left: 15px;
+    padding: 11px 18px;
+    color: white;
+    background: #28734b;
+    border: 0;
+    border-radius: 6px;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+button:hover {
+    background: #205b3c;
+}
+
+.message {
+    min-height: 1.5em;
+}
+
+@media (max-width: 600px) {
+.container {
+        margin: 24px auto;
+}
+
+.card {
+        padding: 18px;
+}
+
+.form-grid {
+        grid-template-columns: 1fr;
+}
+
+.full-width {
+        grid-column: auto;
+}
+.portfolio-card {
+    margin-bottom: 20px;
+}
+
+.section-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.section-heading h2 {
+    margin-bottom: 0;
+}
+
+.assessment-list {
+    display: grid;
+    gap: 12px;
+    margin: 20px 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.assessment-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 16px;
+    border: 1px solid #dce5df;
+    border-radius: 8px;
+}
+
+.assessment-card h3,.assessment-card p {
+    margin: 0 0 6px;
+}
+
+.assessment-actions {
+    display: flex;
+    gap: 8px;
+}
+
+button.secondary {
+    color: #205b3c;
+    background: #e8f1eb;
+}
+
+button.danger {
+    color: #8b2222;
+    background: #f9e8e8;
+}
+
+.empty-state {
+    color: #53645a;
+}
+
+@media (max-width: 600px) {
+    .section-heading,
+    .assessment-card {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .assessment-actions button {
+        flex: 1;
+    }
+}
+.comparable-section {
+    margin-top: 28px;
+    padding-top: 22px;
+    border-top: 1px solid #dce5df;
+}
+
+.helper-text {
+    color: #53645a;
+}
+
+.comparable-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.verification-option {
+    display: flex;
+    align-items: center;
+}
+
+.verification-option input {
+    width: auto;
+}
+
+@media (max-width: 600px) {
+    .comparable-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.attachment-section {
+    margin-top: 28px;
+    padding-top: 22px;
+    border-top: 1px solid #dce5df;
+}
+
+.attachment-controls {
+    display: grid;
+    gap: 12px;
+    margin-top: 12px;
+}
+
+.attachment-controls input {
+    padding: 8px 0;
+    border: 0;
+}
+
+.auth-card {
+    max-width: 520px;
+    margin: 48px auto;
+}
+
+.auth-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 16px;
+}
+
+[hidden] {
+    display: none !important;
+}
+}

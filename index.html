@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nueva tasación</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="src/attachment-storage.js" defer></script>
+    <script src="src/app.js" defer></script>
+
+</head>
+
+<body>
+    <main class="container">
+        <section id="auth-panel" class="card auth-card" aria-labelledby="auth-heading">
+            <h1 id="auth-heading">Acceso a Tasador</h1>
+            <p>Inicia sesión o crea una cuenta para gestionar tus tasaciones.</p>
+            <form id="auth-form">
+                <label>
+                    Correo electrónico
+                    <input id="auth-email" type="email" autocomplete="email" required>
+                </label>
+                <label>
+                    Contraseña
+                    <input
+                        id="auth-password"
+                        type="password"
+                        autocomplete="current-password"
+                        minlength="12"
+                        maxlength="128"
+                        required
+                    >
+                </label>
+                <div class="auth-actions">
+                    <button id="login-button" type="submit">Iniciar sesión</button>
+                    <button id="register-button" class="secondary" type="button">
+                        Crear cuenta
+                    </button>
+                </div>
+                <p id="auth-message" class="message" role="status" aria-live="polite"></p>
+            </form>
+        </section>
+
+        <div id="app-content" hidden>
+        <header class="page-header">
+            <p class="eyebrow">Tasador · Prototipo</p>
+            <h1 id="page-title">Tasaciones</h1>
+            <p>Registra los antecedentes iniciales de la propiedad.</p>
+            <p>
+                Sesión: <strong id="current-user-email"></strong>
+                <button id="logout-button" class="secondary" type="button">Cerrar sesión</button>
+            </p>
+        </header>
+
+        <section class="card portfolio-card" aria-labelledby="portfolio-heading">
+            <div class="section-heading">
+                <h2 id="portfolio-heading">Cartera de tasaciones</h2>
+                <button id="new-assessment" type="button">Nueva tasación</button>
+            </div>
+
+            <ul id="assessment-list" class="assessment-list"></ul>
+            <p id="portfolio-message" class="message" role="status" aria-live="polite"></p>
+        </section>
+
+
+        <form id="inspection-form">
+            <section class="card" aria-labelledby="property-heading">
+                <h2 id="editor-title">Ficha de inspección</h2>
+
+            <div class="form-grid">
+                <label>
+                    Estado
+                    <select name="status">
+                        <option value="pendiente">Pendiente</option>
+                        <option value="inspeccion">Inspección</option>
+                        <option value="revision">En revisión</option>
+                        <option value="entregada">Entregada</option>
+                    </select>
+                </label>
+
+                <label>
+                    Tipo de propiedad
+                    <select name="propertyType" required>
+                        <option value="">Selecciona una opción</option>
+                        <option value="casa">Casa</option>
+                        <option value="departamento">Departamento</option>
+                    </select>
+                </label>
+
+                <label>
+                    Región
+                    <input name="region" type="text" required>
+                </label>
+
+                <label>
+                    Comuna
+                    <input name="commune" type="text" required>
+                </label>
+
+                <label class="full-width">
+                    Dirección o referencia
+                    <input name="address" type="text" required>
+                </label>
+
+                <label>
+                    Superficie construida (m²)
+                    <input name="builtArea" type="number" min="0" step="0.01">
+                </label>
+
+                <label>
+                    Superficie de terreno (m²)
+                    <input name="landArea" type="number" min="0" step="0.01">
+                </label>
+
+                <label>
+                    Dormitorios
+                    <input name="bedrooms" type="number" min="0" step="1">
+                </label>
+
+                <label>
+                    Baños
+                    <input name="bathrooms" type="number" min="0" step="1">
+                </label>
+
+                <label>
+                    Estado de conservación
+                    <select name="condition">
+                    <option value="">Por evaluar</option>
+                    <option value="bueno">Bueno</option>
+                    <option value="regular">Regular</option>
+                    <option value="requiere-reparaciones">Requiere reparaciones</option>
+                    </select>
+                </label>
+
+                <label>
+                    Materiales principales
+                    <input name="materials" type="text">
+                </label>
+
+                <label class="full-width">
+                    Distribución
+                    <textarea name="distribution" rows="3"></textarea>
+                </label>
+
+                <label class="full-width">
+                    Observaciones
+                    <textarea name="observations" rows="4"></textarea>
+                </label>
+            </div>
+
+            <section class="comparable-section" aria-labelledby="comparables-heading">
+                <h3 id="comparables-heading">Estudio de comparables</h3>
+                <p class="helper-text">
+                    Registra referencias y verifica sus datos antes de usarlas en el análisis.
+                </p>
+
+                <div id="comparable-editor" class="comparable-grid">
+                    <label>
+                    Tipo de referencia
+                    <select id="comparable-source">
+                        <option value="anuncio">Anuncio</option>
+                        <option value="venta">Venta cerrada</option>
+                        <option value="tasacion">Tasación previa</option>
+                        <option value="fiscal">Valor fiscal</option>
+                        <option value="otro">Otra fuente</option>
+                    </select>
+                    </label>
+
+                    <label>
+                    Precio en CLP
+                    <input
+                        id="comparable-price"
+                        type="text"
+                        inputmode="numeric"
+                        placeholder="Ej.: 120000000"
+                    >
+                    </label>
+
+                    <label>
+                    Fecha de referencia
+                    <input id="comparable-date" type="date">
+                    </label>
+
+                    <label>
+                    Superficie en m²
+                    <input
+                        id="comparable-area"
+                        type="text"
+                        inputmode="decimal"
+                        placeholder="Ej.: 75,5"
+                    >
+                    </label>
+
+                    <label>
+                    Superficie correspondiente a
+                    <select id="comparable-area-type">
+                        <option value="construida">Superficie construida</option>
+                        <option value="terreno">Superficie de terreno</option>
+                    </select>
+                    </label>
+
+                    <label>
+                    Ubicación
+                    <input
+                        id="comparable-location"
+                        type="text"
+                        placeholder="Comuna o dirección de referencia"
+                    >
+                    </label>
+
+                    <label class="full-width">
+                    Enlace a la fuente, si existe
+                    <input id="comparable-url" type="text" placeholder="https://...">
+                    </label>
+
+                    <label class="full-width">
+                    Características y observaciones
+                    <textarea id="comparable-notes" rows="3"></textarea>
+                    </label>
+
+                    <label class="verification-option full-width">
+                    <input id="comparable-verified" type="checkbox">
+                    Ya verifiqué esta referencia
+                    </label>
+
+                    <button id="add-comparable" type="button">Agregar comparable</button>
+                </div>
+
+                <div id="comparable-value-range" class="full-width" aria-live="polite">
+                    <h4>Rango de valor de referencia</h4>
+
+                    <label>
+                        Base de comparación
+                        <select id="value-range-area-type">
+                            <option value="construida">Superficie construida</option>
+                            <option value="terreno">Superficie de terreno</option>
+                        </select>
+                    </label>
+
+                    <p id="value-range-message">
+                        Agrega al menos dos comparables del mismo tipo de superficie.
+                    </p>
+
+                    <p>
+                        Desde: <span id="value-range-low">—</span>
+                        · Referencia: <span id="value-range-reference">—</span>
+                        · Hasta: <span id="value-range-high">—</span>
+                    </p>
+                </div>
+
+
+
+                <p id="comparable-message" class="message" role="status" aria-live="polite"></p>
+                <ul id="comparable-list" class="assessment-list"></ul>
+            </section>
+
+            <section class="attachment-section" aria-labelledby="attachments-heading">
+                <h3 id="attachments-heading">Fotos y documentos</h3>
+
+                <label for="attachment-input">
+                    Selecciona archivos para esta tasación
+                </label>
+
+                <div class="attachment-controls">
+                    <input
+                    id="attachment-input"
+                    type="file"
+                    accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.odt,.ods"
+                    multiple
+                    >
+                    <button id="save-attachments" type="button">
+                    Guardar archivos en este dispositivo
+                    </button>
+                </div>
+
+                <p id="attachment-message" class="message" role="status" aria-live="polite"></p>
+                <ul id="attachment-list" class="assessment-list"></ul>
+            </section>
+
+                <button id="generate-report" type="button">
+                    Vista previa / Guardar PDF
+                </button>
+
+
+                <button type="submit">Revisar ficha</button>
+                <p id="form-message" class="message" role="status" aria-live="polite"></p>
+            </section>
+        </form>
+        </div>
+    </main>
+</body>
+</html>
