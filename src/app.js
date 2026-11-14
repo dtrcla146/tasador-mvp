@@ -49,6 +49,11 @@ const statusCards = document.querySelector("#status-cards");
 const dashboardKpis = document.querySelector("#dashboard-kpis");
 const deletedReasonsList = document.querySelector("#deleted-reasons");
 const dashboardMessage = document.querySelector("#dashboard-message");
+const emailImportText = document.querySelector("#email-import-text");
+const analyzeEmailButton = document.querySelector("#analyze-email-button");
+const clearEmailButton = document.querySelector("#clear-email-button");
+const emailImportMessage = document.querySelector("#email-import-message");
+const emailImportReview = document.querySelector("#email-import-review");
 const comparableSection = document.querySelector("#comparable-section");
 const comparablesPageContent = document.querySelector("#comparables-page-content");
 const settingsMessage = document.querySelector("#settings-message");
@@ -74,6 +79,76 @@ let userSettings = {
     imageQuality: 0.65,
 };
 let ufValueInfo = null;
+let emailImportProposal = null;
+
+const emailImportFields = [
+    {
+        name: "propertyType",
+        label: "Tipo de propiedad",
+        aliases: ["tipo de propiedad", "tipo de inmueble", "propiedad"],
+        type: "select",
+    },
+    {
+        name: "region",
+        label: "Región",
+        aliases: ["region"],
+        type: "text",
+    },
+    {
+        name: "commune",
+        label: "Comuna",
+        aliases: ["comuna"],
+        type: "text",
+    },
+    {
+        name: "address",
+        label: "Dirección o referencia",
+        aliases: ["direccion", "domicilio"],
+        type: "text",
+    },
+    {
+        name: "builtArea",
+        label: "Superficie construida (m²)",
+        aliases: ["superficie construida", "area construida", "metros construidos"],
+        type: "number",
+    },
+    {
+        name: "landArea",
+        label: "Superficie de terreno (m²)",
+        aliases: ["superficie de terreno", "superficie terreno", "area de terreno"],
+        type: "number",
+    },
+    {
+        name: "bedrooms",
+        label: "Dormitorios",
+        aliases: ["dormitorios", "habitaciones"],
+        type: "number",
+    },
+    {
+        name: "bathrooms",
+        label: "Baños",
+        aliases: ["banos"],
+        type: "number",
+    },
+    {
+        name: "materials",
+        label: "Materiales principales",
+        aliases: ["materiales", "materialidad"],
+        type: "text",
+    },
+    {
+        name: "distribution",
+        label: "Distribución",
+        aliases: ["distribucion"],
+        type: "textarea",
+    },
+    {
+        name: "observations",
+        label: "Observaciones",
+        aliases: ["observaciones", "descripcion de la propiedad"],
+        type: "textarea",
+    },
+];
 
 function getAccessToken() {
     return localStorage.getItem(TOKEN_KEY);
@@ -93,6 +168,247 @@ function getUserItem(key) {
 
 function setUserItem(key, value) {
     localStorage.setItem(getUserStorageKey(key), value);
+}
+
+function normalizeImportedLabel(value) {
+    return value
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, " ")
+        .trim();
+}
+
+function parseImportedNumber(value) {
+    const match = value.match(/-?\d+(?:[.,]\d+)*/);
+    if (!match) return null;
+
+    let normalized = match[0];
+    if (normalized.includes(",") && normalized.includes(".")) {
+        normalized = normalized.replace(/\./g, "").replace(",", ".");
+    } else if (normalized.includes(",")) {
+        normalized = normalized.replace(",", ".");
+    } else if (/^-?\d{1,3}(?:\.\d{3})+$/.test(normalized)) {
+        normalized = normalized.replace(/\./g, "");
+    }
+
+    const number = Number(normalized);
+    return Number.isFinite(number) && number >= 0 ? String(number) : null;
+}
+
+function extractEmailImportProposal(source) {
+    const valuesByLabel = new Map();
+    for (const line of source.split(/\r?\n/)) {
+        const separator = line.search(/[:=]/);
+        if (separator < 1) continue;
+
+        const label = normalizeImportedLabel(line.slice(0, separator));
+        const value = line.slice(separator + 1).trim();
+        if (!value) continue;
+
+        const field = emailImportFields.find((candidate) =>
+            candidate.aliases.includes(label)
+        );
+        if (!field) continue;
+
+        const values = valuesByLabel.get(field.name) || [];
+        values.push(value);
+        valuesByLabel.set(field.name, values);
+    }
+
+    const fields = [];
+    const ambiguous = [];
+    for (const field of emailImportFields) {
+        const values = valuesByLabel.get(field.name);
+        if (!values?.length) continue;
+
+        const distinctValues = [...new Set(values)];
+        if (distinctValues.length > 1) {
+            ambiguous.push(field.label);
+            continue;
+        }
+
+        let value = distinctValues[0];
+        if (field.type === "number") {
+            value = parseImportedNumber(value);
+            if (value === null) {
+                ambiguous.push(field.label);
+                continue;
+            }
+        } else if (field.name === "propertyType") {
+            const normalized = normalizeImportedLabel(value);
+            if (normalized.includes("departamento") || normalized === "depto") {
+                value = "departamento";
+            } else if (normalized.includes("casa")) {
+                value = "casa";
+            } else {
+                ambiguous.push(field.label);
+                continue;
+            }
+        }
+
+        fields.push({ ...field, value });
+    }
+
+    const foundNames = new Set(fields.map((field) => field.name));
+    const ambiguousNames = new Set(ambiguous);
+    const requiredFields = emailImportFields.filter((field) =>
+        ["propertyType", "region", "commune", "address"].includes(field.name)
+    );
+    const missingRequired = requiredFields
+        .filter((field) =>
+            !foundNames.has(field.name) && !ambiguousNames.has(field.label)
+        )
+        .map((field) => field.label);
+
+    return { fields, ambiguous, missingRequired };
+}
+
+function renderEmailImportReview(proposal) {
+    emailImportReview.replaceChildren();
+
+    if (proposal.fields.length === 0) {
+        const emptyMessage = document.createElement("p");
+        emptyMessage.className = "helper-text";
+        emptyMessage.textContent =
+            "No se detectaron campos con etiquetas reconocidas. No se modificó ninguna ficha.";
+        emailImportReview.append(emptyMessage);
+    } else {
+        const heading = document.createElement("h3");
+        heading.textContent = "Revisa los valores propuestos";
+        emailImportReview.append(heading);
+
+        const fieldsContainer = document.createElement("div");
+        fieldsContainer.className = "email-import-fields";
+        for (const field of proposal.fields) {
+            const row = document.createElement("div");
+            row.className = "email-import-field";
+
+            const includeLabel = document.createElement("label");
+            includeLabel.className = "email-import-include";
+            const checkbox = document.createElement("input");
+            checkbox.type = "checkbox";
+            checkbox.checked = true;
+            checkbox.dataset.emailImportInclude = field.name;
+            const includeText = document.createElement("span");
+            includeText.textContent = `Incluir ${field.label}`;
+            includeLabel.append(checkbox, includeText);
+
+            const controlId = `email-import-${field.name}`;
+            const valueLabel = document.createElement("label");
+            valueLabel.htmlFor = controlId;
+            valueLabel.textContent = field.label;
+
+            let control;
+            if (field.type === "textarea") {
+                control = document.createElement("textarea");
+                control.rows = 3;
+            } else if (field.type === "select") {
+                control = document.createElement("select");
+                for (const [value, label] of [
+                    ["casa", "Casa"],
+                    ["departamento", "Departamento"],
+                ]) {
+                    const option = document.createElement("option");
+                    option.value = value;
+                    option.textContent = label;
+                    control.append(option);
+                }
+            } else {
+                control = document.createElement("input");
+                control.type = field.type;
+                if (field.type === "number") {
+                    control.min = "0";
+                    control.step = field.name === "bedrooms" || field.name === "bathrooms"
+                        ? "1"
+                        : "0.01";
+                }
+            }
+
+            control.id = controlId;
+            control.value = field.value;
+            row.append(includeLabel, valueLabel, control);
+            fieldsContainer.append(row);
+        }
+        emailImportReview.append(fieldsContainer);
+
+        const applyButton = document.createElement("button");
+        applyButton.type = "button";
+        applyButton.id = "apply-email-proposal";
+        applyButton.textContent = "Aplicar a una nueva ficha";
+        applyButton.addEventListener("click", applyEmailImportProposal);
+        emailImportReview.append(applyButton);
+    }
+
+    if (proposal.ambiguous.length || proposal.missingRequired.length) {
+        const warning = document.createElement("p");
+        warning.className = "email-import-warning";
+        const details = [];
+        if (proposal.ambiguous.length) {
+            details.push(
+                `Revisa manualmente los campos con datos contradictorios o no reconocidos: ${proposal.ambiguous.join(", ")}.`
+            );
+        }
+        if (proposal.missingRequired.length) {
+            details.push(
+                `No se detectaron los campos obligatorios: ${proposal.missingRequired.join(", ")}.`
+            );
+        }
+        warning.textContent = details.join(" ");
+        emailImportReview.append(warning);
+    }
+}
+
+function analyzeEmailImport() {
+    emailImportMessage.textContent = "";
+    emailImportReview.replaceChildren();
+    emailImportProposal = null;
+    const source = emailImportText.value.trim();
+
+    if (!source) {
+        emailImportMessage.textContent = "Pega el texto del correo para analizarlo.";
+        return;
+    }
+
+    emailImportProposal = extractEmailImportProposal(source);
+    renderEmailImportReview(emailImportProposal);
+    emailImportMessage.textContent = emailImportProposal.fields.length
+        ? `Se detectaron ${emailImportProposal.fields.length} campo(s). Revísalos; todavía no se ha creado ni modificado una tasación.`
+        : emailImportProposal.ambiguous.length
+            ? "No se detectaron valores claros. Revisa los campos indicados."
+            : "No se detectaron campos. Revisa las etiquetas del texto.";
+}
+
+function applyEmailImportProposal() {
+    if (!emailImportProposal?.fields.length) return;
+
+    const selectedFields = Array.from(
+        emailImportReview.querySelectorAll("[data-email-import-include]:checked")
+    );
+    if (selectedFields.length === 0) {
+        emailImportMessage.textContent = "Selecciona al menos un campo para aplicarlo.";
+        return;
+    }
+
+    flushPendingSave();
+    startNewAssessment();
+    for (const checkbox of selectedFields) {
+        const field = emailImportProposal.fields.find(
+            (item) => item.name === checkbox.dataset.emailImportInclude
+        );
+        const valueInput = emailImportReview.querySelector(
+            `#email-import-${CSS.escape(field.name)}`
+        );
+        const formField = form.elements.namedItem(field.name);
+        formField.value = valueInput.value;
+        formField.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+
+    setActiveView("editor-view");
+    message.textContent =
+        "Se aplicaron los campos seleccionados a una nueva ficha. Revisa los datos y completa la tasación.";
+    emailImportMessage.textContent =
+        "Propuesta aplicada. Puedes volver a esta vista para preparar otro correo.";
 }
 
 function apiFetch(url, options = {}) {
@@ -250,6 +566,7 @@ function setActiveView(viewId) {
     const viewTitles = {
         "dashboard-view": "Resumen",
         "assessments-view": "Tasaciones",
+        "email-import-view": "Importar correo",
         "comparables-view": "Comparables",
         "settings-view": "Configuración",
     };
@@ -2380,6 +2697,14 @@ document.querySelectorAll("#main-navigation [data-view]").forEach((button) => {
         }
         setActiveView(button.dataset.view);
     });
+});
+
+analyzeEmailButton.addEventListener("click", analyzeEmailImport);
+clearEmailButton.addEventListener("click", () => {
+    emailImportText.value = "";
+    emailImportProposal = null;
+    emailImportMessage.textContent = "";
+    emailImportReview.replaceChildren();
 });
 
 comparablesPageContent.append(comparableSection);

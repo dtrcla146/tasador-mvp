@@ -47,3 +47,13 @@ Abre <http://127.0.0.1:5500>. No abras `index.html` directamente como archivo: e
 Las imágenes compatibles se convierten a WebP en el navegador usando la calidad elegida; el original se conserva en el almacenamiento local del navegador. La aplicación sigue siendo local: no publiques el servidor ni abras sus puertos a Internet.
 
 Las rutas de tasaciones y adjuntos requieren sesión y solo devuelven registros de la cuenta autenticada. El frontend guarda las tasaciones, colas de sincronización y archivos locales separadas por cuenta. CORS permite el acceso desde el servidor local del frontend en el puerto 5500.
+
+## Importar información de un correo
+
+En **Importar correo**, pega el texto del mensaje y pulsa **Detectar información**. La aplicación reconoce campos que tengan etiquetas explícitas como `Comuna:`, `Dirección:` o `Superficie construida:`. Revisa y corrige cada valor, selecciona qué campos usar y pulsa **Aplicar a una nueva ficha**. Los campos ausentes o contradictorios se señalan para revisión; la aplicación no crea una tasación al analizar el correo.
+
+Esta primera etapa funciona en el navegador, sin conectar una cuenta de correo, usar una API de IA ni enviar el mensaje a un servicio externo. La ficha solo recibe los valores cuando confirmas su aplicación; luego puedes corregirlos y completar el flujo normal de tasación.
+
+## Versión 2.0
+
+La rama `version-2.0-clean` inicia el desarrollo de importación asistida desde correo. La búsqueda de anuncios y la generación editable de planos todavía están pendientes de sus etapas de diseño e implementación. Los portales inmobiliarios no se consultan automáticamente: antes de automatizar búsquedas hay que confirmar que cada fuente permita ese uso y cómo mantener sus enlaces y datos actualizados sin infringir sus condiciones.

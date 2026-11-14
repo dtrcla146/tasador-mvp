@@ -253,6 +253,54 @@ button.danger {
     margin: 0;
 }
 
+.email-import-card > label {
+    margin-bottom: 8px;
+}
+
+.email-import-card > textarea {
+    min-height: 220px;
+}
+
+.email-import-fields {
+    display: grid;
+    gap: 12px;
+}
+
+.email-import-field {
+    display: grid;
+    grid-template-columns: minmax(180px, 1fr) minmax(220px, 2fr);
+    gap: 8px 16px;
+    align-items: center;
+    padding: 14px;
+    background: #f7faf8;
+    border: 1px solid #dce5df;
+    border-radius: 8px;
+}
+
+.email-import-field .email-import-include {
+    display: flex;
+    grid-column: 1 / -1;
+    align-items: center;
+    gap: 8px;
+}
+
+.email-import-include input {
+    width: auto;
+}
+
+.email-import-field input,
+.email-import-field select,
+.email-import-field textarea {
+    grid-column: 2;
+}
+
+.email-import-warning {
+    padding: 12px;
+    color: #694800;
+    background: #fff6db;
+    border-radius: 8px;
+}
+
 .main-navigation {
     display: flex;
     flex-wrap: wrap;
@@ -396,6 +444,16 @@ button.danger {
     .main-navigation button {
         padding: 10px 8px;
         font-size: 0.92rem;
+    }
+
+    .email-import-field {
+        grid-template-columns: 1fr;
+    }
+
+    .email-import-field input,
+    .email-import-field select,
+    .email-import-field textarea {
+        grid-column: 1;
     }
 
     .kpi-grid {

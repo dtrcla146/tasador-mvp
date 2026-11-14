@@ -60,7 +60,7 @@
 
         <div id="app-content" hidden>
         <header class="page-header">
-            <p class="eyebrow">Tasador · versión 1.1</p>
+            <p class="eyebrow">Tasador · versión 2.0</p>
             <h1 id="page-title">Tasaciones</h1>
             <p>Organiza tasaciones, plazos, tarifas y antecedentes de propiedades.</p>
             <p>
@@ -72,10 +72,41 @@
         <nav id="main-navigation" class="main-navigation" aria-label="Navegación principal">
             <button type="button" data-view="dashboard-view" aria-current="page">Resumen</button>
             <button type="button" data-view="assessments-view">Tasaciones</button>
+            <button type="button" data-view="email-import-view">Importar correo</button>
             <button type="button" data-view="editor-view">Nueva tasación</button>
             <button type="button" data-view="comparables-view">Comparables</button>
             <button type="button" data-view="settings-view">Configuración</button>
         </nav>
+
+        <section id="email-import-view" class="app-view" aria-labelledby="email-import-heading" hidden>
+            <section class="card email-import-card">
+                <h2 id="email-import-heading">Preparar tasación desde un correo</h2>
+                <p>
+                    Pega el texto del correo. La detección se realiza en este navegador:
+                    el mensaje no se envía ni se guarda automáticamente.
+                </p>
+                <p class="helper-text">
+                    Se reconocen etiquetas explícitas como «Dirección:», «Comuna:»,
+                    «Superficie construida:» y «Dormitorios:». Revisa cada valor antes de
+                    aplicarlo; la propuesta no crea una tasación por sí sola.
+                </p>
+                <label for="email-import-text">Texto del correo</label>
+                <textarea
+                    id="email-import-text"
+                    rows="12"
+                    maxlength="50000"
+                    autocomplete="off"
+                    spellcheck="false"
+                    placeholder="Tipo de propiedad: Casa&#10;Región: Metropolitana de Santiago&#10;Comuna: Santiago&#10;Dirección: Calle Ejemplo 123&#10;Superficie construida: 95 m²&#10;Superficie de terreno: 180 m²&#10;Dormitorios: 3&#10;Baños: 2"
+                ></textarea>
+                <div class="settings-actions">
+                    <button id="analyze-email-button" type="button">Detectar información</button>
+                    <button id="clear-email-button" class="secondary" type="button">Limpiar</button>
+                </div>
+                <p id="email-import-message" class="message" role="status" aria-live="polite"></p>
+                <div id="email-import-review" aria-live="polite"></div>
+            </section>
+        </section>
 
         <section id="dashboard-view" class="app-view" aria-labelledby="dashboard-heading">
             <h2 id="dashboard-heading">Resumen de trabajo</h2>
