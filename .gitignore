@@ -223,3 +223,10 @@ __marimo__/
 /backend/tasador.db
 /backend/attachments/
 /backend/borrar.txt
+/backups/
+node_modules/
+/dist/
+/src-tauri/target/
+/frontend/.env.local
+/frontend/.env.*.local
+/release-pilot/

@@ -102,6 +102,247 @@ button:hover {
         margin: 24px auto;
 }
 
+:root {
+    color: #203632;
+    background: #f3f7f5;
+    --brand-ink: #173c38;
+    --brand-green: #285d56;
+    --brand-mint: #eaf2ef;
+    --brand-coral: #d97736;
+    --line-soft: #d4e0dc;
+}
+
+.eyebrow,
+.main-navigation button[aria-current="page"] {
+    color: var(--brand-green);
+}
+
+.card {
+    border-color: var(--line-soft);
+    border-radius: 16px;
+    box-shadow: 0 8px 26px rgb(23 60 56 / 7%);
+}
+
+button {
+    background: var(--brand-green);
+    border-radius: 9px;
+}
+
+button:hover {
+    background: var(--brand-ink);
+}
+
+button.secondary {
+    color: var(--brand-ink);
+    background: #eaf2ef;
+}
+
+button.secondary:hover {
+    background: #d8e7e1;
+}
+
+button.danger {
+    background: #a64e43;
+}
+
+.main-navigation button {
+    border: 1px solid var(--line-soft);
+    color: var(--brand-ink);
+    background: #fff;
+}
+
+.main-navigation button[aria-current="page"] {
+    border-color: var(--brand-green);
+    background: var(--brand-mint);
+}
+
+.import-template,
+.plan-workspace,
+.reports-workspace {
+    margin-bottom: 20px;
+}
+
+.import-template {
+    padding: 14px;
+    border: 1px solid var(--line-soft);
+    border-radius: 10px;
+    background: #f8fbf9;
+}
+
+.import-template pre {
+    overflow: auto;
+    padding: 14px;
+    border-radius: 8px;
+    background: #edf4f1;
+    white-space: pre-wrap;
+}
+
+.plan-editor-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+    margin: 18px 0;
+}
+
+.plan-preview {
+    min-height: 120px;
+    margin-top: 16px;
+    padding: 14px;
+    overflow: auto;
+    border: 1px solid var(--line-soft);
+    border-radius: 12px;
+    background-color: #fbfdfc;
+    background-image: linear-gradient(#edf3f0 1px, transparent 1px),
+        linear-gradient(90deg, #edf3f0 1px, transparent 1px);
+    background-size: 24px 24px;
+}
+
+.plan-preview svg {
+    display: block;
+    width: 100%;
+    max-height: 560px;
+    margin: auto;
+}
+
+.plan-workspace hr {
+    margin: 28px 0;
+    border: 0;
+    border-top: 1px solid var(--line-soft);
+}
+
+.table-scroll {
+    width: 100%;
+    overflow-x: auto;
+    border: 1px solid var(--line-soft);
+    border-radius: 10px;
+}
+
+.comparable-suggestions-table {
+    width: 100%;
+    min-width: 920px;
+    border-collapse: collapse;
+    background: white;
+}
+
+.comparable-suggestions-table th,
+.comparable-suggestions-table td {
+    padding: 12px;
+    border-bottom: 1px solid var(--line-soft);
+    text-align: left;
+    vertical-align: top;
+}
+
+.comparable-suggestions-table th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    color: var(--brand-ink);
+    background: var(--brand-mint);
+}
+
+.comparable-suggestions-table td p {
+    margin: 6px 0;
+}
+
+.criterion-warning {
+    color: #85451f;
+    font-weight: 600;
+}
+
+.comparable-check-label {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    min-width: 100px;
+}
+
+.comparable-check-label input[type="checkbox"] {
+    width: auto;
+    margin-top: 3px;
+    accent-color: var(--brand-green);
+}
+
+.suggestion-row-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 8px;
+}
+
+.suggestion-row-actions button {
+    margin: 2px 3px 2px 0;
+    padding: 7px 9px;
+    font-size: .85rem;
+}
+
+.assessment-actions button {
+    margin-top: 8px;
+    margin-left: 0;
+}
+
+.image-processing-message,
+#image-processing-message {
+    padding: 10px 12px;
+    color: #42635b;
+    border-left: 3px solid var(--brand-coral);
+    background: #fbf6ef;
+}
+
+input[type="checkbox"] {
+    width: auto;
+    accent-color: var(--brand-green);
+}
+
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    clip-path: inset(50%);
+}
+
+.empty-state {
+    padding: 18px;
+    color: #58716a;
+    border: 1px dashed #b7c9c2;
+    border-radius: 10px;
+    background: #f8fbf9;
+}
+
+@media (max-width: 700px) {
+    .plan-editor-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .main-navigation {
+        display: flex;
+        overflow-x: auto;
+        gap: 8px;
+        padding-bottom: 8px;
+    }
+
+    .main-navigation button {
+        flex: 0 0 auto;
+        margin: 0;
+        padding: 10px 12px;
+    }
+
+    .settings-actions,
+    .attachment-controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .settings-actions button,
+    .attachment-controls button {
+        margin: 4px 0;
+    }
+}
+
 .card {
         padding: 18px;
 }
@@ -187,6 +428,59 @@ button.danger {
     margin-top: 28px;
     padding-top: 22px;
     border-top: 1px solid #dce5df;
+}
+
+.comparable-research {
+    margin: 20px 0;
+}
+
+.valuation-section {
+    display: grid;
+    gap: 16px;
+    margin-top: 24px;
+}
+
+.fiscal-method {
+    display: grid;
+    gap: 16px;
+    min-width: 0;
+    padding: 18px;
+    border: 1px solid #dce5df;
+    border-radius: 8px;
+}
+
+.fiscal-method legend {
+    padding: 0 8px;
+    font-weight: 700;
+}
+
+.comparable-research h4 {
+    margin: 24px 0 8px;
+}
+
+.comparable-search-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.comparable-search-links a {
+    display: inline-block;
+    padding: 10px 14px;
+    color: #205b3c;
+    background: #e8f1eb;
+    border-radius: 6px;
+    font-weight: 700;
+}
+
+.suggestion-status {
+    font-weight: 700;
+}
+
+.suggestion-description {
+    max-height: 12rem;
+    overflow: auto;
+    white-space: pre-wrap;
 }
 
 .helper-text {
@@ -303,7 +597,10 @@ button.danger {
 
 .main-navigation {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
     gap: 8px;
     margin: 20px 0 28px;
     padding: 8px;
@@ -312,7 +609,9 @@ button.danger {
 }
 
 .main-navigation button {
+    flex: 0 0 auto;
     margin: 0;
+    white-space: nowrap;
     color: #254a34;
     background: transparent;
 }
@@ -433,8 +732,10 @@ button.danger {
     }
 
     .main-navigation {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        display: flex;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        white-space: nowrap;
         position: sticky;
         top: 0;
         z-index: 2;
@@ -475,5 +776,41 @@ button.danger {
 
     .settings-actions button {
         width: 100%;
+    }
+}
+
+html,
+body {
+    width: 100%;
+    min-width: 0;
+    overflow-x: clip;
+}
+
+.container {
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    padding: clamp(10px, 2vw, 28px);
+}
+
+.app-view,
+.card,
+.page-header,
+.main-navigation {
+    min-width: 0;
+    max-width: 100%;
+}
+
+.card {
+    padding: clamp(14px, 2vw, 24px);
+}
+
+@media (max-width: 600px) {
+    .container {
+        padding: 10px;
+    }
+
+    .card {
+        padding: 14px;
     }
 }

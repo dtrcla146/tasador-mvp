@@ -1,0 +1,48 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      TASADOR_ENV: production
+      TASADOR_SECRET_KEY: ${TASADOR_SECRET_KEY:?Set TASADOR_SECRET_KEY in .env}
+      TASADOR_DATA_DIR: /data
+      TASADOR_MAX_USERS: "10"
+      TASADOR_CORS_ORIGINS: ${TASADOR_CORS_ORIGINS:-https://localhost,http://tauri.localhost}
+    volumes:
+      - tasador_data:/data
+    expose:
+      - "8000"
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  web:
+    build:
+      context: .
+      dockerfile: deploy/frontend.Dockerfile
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?Set APP_DOMAIN in .env}
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+
+volumes:
+  tasador_data:
+  caddy_data:
+  caddy_config:

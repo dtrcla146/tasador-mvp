@@ -1,0 +1,6 @@
+{
+  "identifier": "default",
+  "description": "Permisos base para la ventana principal de Tasador MVP.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}
