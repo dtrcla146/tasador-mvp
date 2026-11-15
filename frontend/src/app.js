@@ -47,7 +47,7 @@ const isInstalledApp =
     isNativeCameraAvailable() || "__TAURI_INTERNALS__" in window;
 const API_BASE_URL = (
     configuredApiBaseUrl ||
-    (localDevelopment ? "http://127.0.0.1:8000" : window.location.origin)
+    (localDevelopment ? "http://127.0.0.1:8000" : "/api")
 ).replace(/\/+$/, "");
 const installedAppApiConfigurationMessage =
     "Configura VITE_API_BASE_URL con la URL HTTPS del backend y vuelve a compilar la aplicación.";

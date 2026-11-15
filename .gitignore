@@ -230,3 +230,16 @@ node_modules/
 /frontend/.env.local
 /frontend/.env.*.local
 /release-pilot/
+
+# Base de datos y archivos locales
+*.db
+*.db-journal
+tasador.db
+
+# Variables de entorno
+.env
+.env.local
+
+# Archivos de sistema
+.DS_Store
+Thumbs.db

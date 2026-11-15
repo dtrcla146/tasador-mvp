@@ -48,6 +48,8 @@ app = FastAPI(
     openapi_url=None if is_production else "/openapi.json",
 )
 configured_origins = os.environ.get("TASADOR_CORS_ORIGINS")
+if configured_origins is None:
+    configured_origins = os.environ.get("ALLOWED_ORIGINS")
 allowed_origins = (
     [origin.strip() for origin in configured_origins.split(",") if origin.strip()]
     if configured_origins is not None
